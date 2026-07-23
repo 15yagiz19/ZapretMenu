@@ -6,7 +6,7 @@ set -e
 ROOT="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-VERSION="${VERSION:-1.0.5}"
+VERSION="${VERSION:-1.0.6}"
 ARCH_NOTE="universal (arm64+x86_64)"
 DIST_DIR="$ROOT/dist"
 STAGE="$DIST_DIR/stage"
@@ -43,10 +43,12 @@ mkdir -p "$PAYLOAD/scripts" "$PAYLOAD/config" "$PAYLOAD/menubar" "$PAYLOAD/bundl
 for f in lib.sh zapret-ctl system-install.sh install-menubar.sh \
 	zapret-start.sh zapret-stop.sh zapret-status.sh \
 	zapret-update-lists.sh zapret-update-engine.sh zapret-rollback-engine.sh \
-	fix-dns-turkey.sh zapret-uninstall.sh verify.sh; do
+	fix-dns-turkey.sh zapret-uninstall.sh verify.sh \
+	zapret-watchdog.sh zapret-watchdog.plist; do
 	cp "$ROOT/scripts/$f" "$PAYLOAD/scripts/$f"
 done
-chmod 755 "$PAYLOAD/scripts"/* 2>/dev/null || true
+chmod 755 "$PAYLOAD/scripts"/*.sh "$PAYLOAD/scripts"/zapret-ctl 2>/dev/null || true
+chmod 644 "$PAYLOAD/scripts"/*.plist 2>/dev/null || true
 
 # Config
 cp "$ROOT/config/config.macos-hostlist" "$PAYLOAD/config/"

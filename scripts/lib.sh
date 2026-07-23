@@ -29,6 +29,16 @@ ALLOWED_REMOTE="https://github.com/bol-van/zapret.git"
 BACKUP_ROOT="${BACKUP_ROOT:-/opt}"
 USER_NAME="${SUDO_USER:-$(id -un)}"
 
+# desired-state: on|off — watchdog only restarts when "on"
+SUPPORT_DIR_FIXED="/Library/Application Support/Zapret"
+DESIRED_STATE_FILE="${DESIRED_STATE_FILE:-$SUPPORT_DIR_FIXED/desired-state}"
+
+# launchd labels
+ZAPRET_LAUNCHD_LABEL="${ZAPRET_LAUNCHD_LABEL:-system/zapret}"
+ZAPRET_PLIST="${ZAPRET_PLIST:-/Library/LaunchDaemons/zapret.plist}"
+WATCHDOG_LABEL="${WATCHDOG_LABEL:-system/zapret-watchdog}"
+WATCHDOG_PLIST="${WATCHDOG_PLIST:-/Library/LaunchDaemons/zapret-watchdog.plist}"
+
 mkdir -p "$ZAPRET_LOG_DIR" 2>/dev/null || true
 
 log() {
@@ -60,24 +70,45 @@ is_running() {
 	return 1
 }
 
-# launchd label for /Library/LaunchDaemons/zapret.plist
-ZAPRET_LAUNCHD_LABEL="${ZAPRET_LAUNCHD_LABEL:-system/zapret}"
-ZAPRET_PLIST="${ZAPRET_PLIST:-/Library/LaunchDaemons/zapret.plist}"
+set_desired_state() {
+	_state=$1
+	mkdir -p "$SUPPORT_DIR_FIXED" 2>/dev/null || true
+	printf '%s\n' "$_state" > "$DESIRED_STATE_FILE"
+	chmod 644 "$DESIRED_STATE_FILE" 2>/dev/null || true
+}
 
-# Unload so macOS cannot re-run "start" right after menu Stop
-# (do NOT permanently disable — reboot should still RunAtLoad)
+get_desired_state() {
+	if [ -f "$DESIRED_STATE_FILE" ]; then
+		tr -d ' \t\r\n' < "$DESIRED_STATE_FILE" | tr '[:upper:]' '[:lower:]'
+	else
+		echo "on"
+	fi
+}
+
+# Unload one-shot boot job so macOS cannot re-run start after Stop
 zapret_launchd_unload() {
 	launchctl bootout "$ZAPRET_LAUNCHD_LABEL" 2>/dev/null || true
 	launchctl unload "$ZAPRET_PLIST" 2>/dev/null || true
 }
 
-# Load so menu Start / reboot autostart works again
 zapret_launchd_load() {
 	if [ -f "$ZAPRET_PLIST" ] || [ -L "$ZAPRET_PLIST" ]; then
-		# already loaded is fine
 		launchctl bootstrap system "$ZAPRET_PLIST" 2>/dev/null || \
 			launchctl load -w "$ZAPRET_PLIST" 2>/dev/null || true
 	fi
+}
+
+zapret_watchdog_load() {
+	if [ -f "$WATCHDOG_PLIST" ] || [ -L "$WATCHDOG_PLIST" ]; then
+		launchctl bootout "$WATCHDOG_LABEL" 2>/dev/null || true
+		launchctl bootstrap system "$WATCHDOG_PLIST" 2>/dev/null || \
+			launchctl load -w "$WATCHDOG_PLIST" 2>/dev/null || true
+	fi
+}
+
+zapret_watchdog_unload() {
+	launchctl bootout "$WATCHDOG_LABEL" 2>/dev/null || true
+	launchctl unload "$WATCHDOG_PLIST" 2>/dev/null || true
 }
 
 zapret_start() {
@@ -85,21 +116,25 @@ zapret_start() {
 		echo "HATA: $ZAPRET_INIT bulunamadi. Once system-install.sh calistirin." >&2
 		return 1
 	fi
-	# Ensure launchd will not fight us; start daemons explicitly
+	set_desired_state "on"
+	# Boot job optional; we start daemons explicitly
 	zapret_launchd_load
+	zapret_watchdog_load
 	"$ZAPRET_INIT" start
 }
 
 zapret_stop() {
-	# 1) Detach launchd FIRST so nothing re-starts tpws after we kill it
+	# User wants off — watchdog must not revive tpws
+	set_desired_state "off"
+	# Unload one-shot start job (not watchdog — it enforces off)
 	zapret_launchd_unload
-	# 2) Official stop (PF + daemons)
 	if [ -x "$ZAPRET_INIT" ]; then
 		"$ZAPRET_INIT" stop 2>/dev/null || true
 	fi
-	# 3) Hard kill leftovers
 	pkill -x tpws 2>/dev/null || true
 	rm -f /var/run/tpws1.pid 2>/dev/null || true
+	# Keep watchdog loaded so it can kill stray tpws if something restarts it
+	zapret_watchdog_load
 }
 
 zapret_restart() {
@@ -110,15 +145,21 @@ zapret_restart() {
 
 zapret_status() {
 	local state="Kapali"
+	local desired
+	desired=$(get_desired_state)
 	if is_running; then
 		state="Acik"
 	fi
 	echo "Zapret: $state"
+	echo "desired: $desired"
 	if is_running; then
 		echo "tpws: calisiyor"
 		pgrep -lf tpws 2>/dev/null | head -5
 	else
 		echo "tpws: yok"
+		if [ "$desired" = "on" ]; then
+			echo "not: desired=on ama tpws yok — watchdog ~30sn icinde baslatmali"
+		fi
 	fi
 	if [ -f /etc/pf.anchors/zapret ]; then
 		echo "PF anchor: mevcut"
@@ -126,11 +167,18 @@ zapret_status() {
 		echo "PF anchor: yok"
 	fi
 	if launchctl print system/zapret >/dev/null 2>&1; then
-		echo "launchd: aktif (boot/login acabilir)"
+		echo "launchd zapret: kayitli"
 	elif [ -L /Library/LaunchDaemons/zapret.plist ] || [ -f /Library/LaunchDaemons/zapret.plist ]; then
-		echo "launchd: dosya var ama unload (manuel Kapat sonrasi normal)"
+		echo "launchd zapret: plist var"
 	else
-		echo "launchd: yok"
+		echo "launchd zapret: yok"
+	fi
+	if launchctl print system/zapret-watchdog >/dev/null 2>&1; then
+		echo "watchdog: aktif (30sn)"
+	elif [ -f /Library/LaunchDaemons/zapret-watchdog.plist ] || [ -L /Library/LaunchDaemons/zapret-watchdog.plist ]; then
+		echo "watchdog: plist var ama unload"
+	else
+		echo "watchdog: yok"
 	fi
 	if [ -f "$ZAPRET_OPT/config" ]; then
 		echo "config: $ZAPRET_OPT/config"
@@ -150,7 +198,6 @@ sync_hostlist_to_opt() {
 	fi
 }
 
-# Sync workspace/support config + custom.d into the live /opt install (requires root).
 sync_config_to_opt() {
 	if [ -f "$CONFIG_SRC" ]; then
 		cp "$CONFIG_SRC" "$ZAPRET_OPT/config"

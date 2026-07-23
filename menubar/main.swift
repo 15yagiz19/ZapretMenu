@@ -194,19 +194,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let result = self?.runProcess(args: ["status"], useSudo: true) ?? (1, "ctl yok")
             let out = result.1
-            let on = out.lowercased().contains("acik") || out.lowercased().contains("açık")
-                || out.contains("Zapret: Acik") || out.contains("tpws: calisiyor")
+            // Prefer explicit "Zapret: Acik/Kapali" line over substring matches
+            let on: Bool
+            if out.contains("Zapret: Acik") || out.contains("Zapret: Açık") {
+                on = true
+            } else if out.contains("Zapret: Kapali") || out.contains("Zapret: Kapalı") {
+                on = false
+            } else {
+                on = out.contains("tpws: calisiyor")
+            }
+            let desiredOn = out.contains("desired: on") || out.contains("desired:on")
             DispatchQueue.main.async {
-                self?.applyStatus(on: on, detail: out)
+                self?.applyStatus(on: on, desiredOn: desiredOn, detail: out)
             }
         }
     }
 
-    private func applyStatus(on: Bool, detail: String) {
+    private func applyStatus(on: Bool, desiredOn: Bool = true, detail: String = "") {
         isOn = on
-        statusMenuItem.title = on ? "Durum: Açık" : "Durum: Kapalı"
-        statusItem.button?.title = on ? "Z●" : "Z○"
-        statusItem.button?.toolTip = on ? "Zapret: Açık" : "Zapret: Kapalı"
+        if on {
+            statusMenuItem.title = "Durum: Açık"
+            statusItem.button?.title = "Z●"
+            statusItem.button?.toolTip = "Zapret: Açık"
+        } else if desiredOn {
+            statusMenuItem.title = "Durum: Kapalı (yeniden başlatılıyor…)"
+            statusItem.button?.title = "Z○"
+            statusItem.button?.toolTip = "İstenen: açık, tpws yok — watchdog ~30 sn içinde başlatır"
+        } else {
+            statusMenuItem.title = "Durum: Kapalı"
+            statusItem.button?.title = "Z○"
+            statusItem.button?.toolTip = "Zapret: Kapalı"
+        }
         openItem.isEnabled = !isBusy && !on
         closeItem.isEnabled = !isBusy && on
         if !isBusy {

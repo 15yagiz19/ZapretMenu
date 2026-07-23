@@ -157,16 +157,21 @@ if [ -d "$ZAPRET_HOME/config/custom.d" ]; then
 	chmod 644 "$ZAPRET_OPT/init.d/macos/custom.d"/* 2>/dev/null || true
 fi
 
-# 5) local-tools (portable scripts for ctl)
+# 5) local-tools (portable scripts for ctl + watchdog)
 mkdir -p "$LOCAL_TOOLS"
 for f in lib.sh zapret-ctl zapret-start.sh zapret-stop.sh zapret-status.sh \
 	zapret-update-lists.sh zapret-update-engine.sh zapret-rollback-engine.sh \
-	fix-dns-turkey.sh zapret-uninstall.sh verify.sh; do
+	fix-dns-turkey.sh zapret-uninstall.sh verify.sh zapret-watchdog.sh; do
 	if [ -f "$SCRIPTS_DIR/$f" ]; then
 		cp "$SCRIPTS_DIR/$f" "$LOCAL_TOOLS/$f"
 	fi
 done
-chmod 755 "$LOCAL_TOOLS"/* 2>/dev/null || true
+# Watchdog LaunchDaemon template (copied to /Library/LaunchDaemons below)
+if [ -f "$SCRIPTS_DIR/zapret-watchdog.plist" ]; then
+	cp "$SCRIPTS_DIR/zapret-watchdog.plist" "$LOCAL_TOOLS/zapret-watchdog.plist"
+fi
+chmod 755 "$LOCAL_TOOLS"/*.sh "$LOCAL_TOOLS"/zapret-ctl 2>/dev/null || true
+chmod 644 "$LOCAL_TOOLS/zapret-watchdog.plist" 2>/dev/null || true
 
 # 6) Permissions
 chown -R root:wheel "$ZAPRET_OPT"
@@ -187,15 +192,34 @@ chmod 755 "$LOCAL_TOOLS"/* 2>/dev/null || true
 chown -R "$USER_NAME:staff" "$SUPPORT_DIR" 2>/dev/null || chown -R "$USER_NAME" "$SUPPORT_DIR" 2>/dev/null || true
 chmod -R u+rwX,go+rX "$SUPPORT_DIR" 2>/dev/null || true
 
-# 7) launchd
+# 7) launchd boot start + watchdog
 ln -fs "$ZAPRET_OPT/init.d/macos/zapret.plist" /Library/LaunchDaemons/zapret.plist
-echo "launchd plist baglandi."
+echo "launchd zapret plist baglandi."
+
+# Watchdog: restarts tpws if desired=on but process died
+if [ -f "$LOCAL_TOOLS/zapret-watchdog.plist" ]; then
+	# Ensure ProgramArguments path is absolute local-tools
+	cp "$LOCAL_TOOLS/zapret-watchdog.plist" /Library/LaunchDaemons/zapret-watchdog.plist
+	chmod 644 /Library/LaunchDaemons/zapret-watchdog.plist
+	chown root:wheel /Library/LaunchDaemons/zapret-watchdog.plist
+	echo "launchd watchdog plist kuruldu."
+fi
+
+# desired-state default on
+mkdir -p "$SUPPORT_DIR"
+printf 'on\n' > "$SUPPORT_DIR/desired-state"
+chmod 644 "$SUPPORT_DIR/desired-state"
 
 # 8) zapret-ctl + sudoers (target user, not hardcoded)
+# IMPORTANT: ctl must live under /opt/zapret/local-tools (no home path)
 mkdir -p /usr/local/bin
+# Embed SCRIPTS_DIR resolution: always prefer /opt/zapret/local-tools when installed
 cp "$LOCAL_TOOLS/zapret-ctl" "$CTL_PATH"
+# Rewrite any residual absolute home path in ctl is avoided by portable ctl
 chmod 755 "$CTL_PATH"
 chown root:wheel "$CTL_PATH"
+# Also keep ctl inside local-tools for direct use
+cp "$LOCAL_TOOLS/zapret-ctl" "$LOCAL_TOOLS/zapret-ctl" 2>/dev/null || true
 
 TMP_SUDOERS=$(mktemp)
 cat > "$TMP_SUDOERS" <<EOF
@@ -230,8 +254,9 @@ Tailscale uses UDP 41641, not 443 — left alone.
 If you need QUIC back: remove that custom file and restart Zapret.
 QEOF
 
-# 10) Start service
+# 10) Start service + enable watchdog
 echo "Zapret baslatiliyor..."
+printf 'on\n' > "$SUPPORT_DIR/desired-state"
 "$ZAPRET_OPT/init.d/macos/zapret" start
 
 sleep 2
@@ -243,8 +268,27 @@ else
 fi
 
 if [ -f /Library/LaunchDaemons/zapret.plist ]; then
+	launchctl bootout system/zapret 2>/dev/null || true
 	launchctl bootstrap system /Library/LaunchDaemons/zapret.plist 2>/dev/null || \
 	launchctl load -w /Library/LaunchDaemons/zapret.plist 2>/dev/null || true
+fi
+
+if [ -f /Library/LaunchDaemons/zapret-watchdog.plist ]; then
+	launchctl bootout system/zapret-watchdog 2>/dev/null || true
+	launchctl bootstrap system /Library/LaunchDaemons/zapret-watchdog.plist 2>/dev/null || \
+	launchctl load -w /Library/LaunchDaemons/zapret-watchdog.plist 2>/dev/null || true
+	echo "watchdog yuklendi (30sn aralik)."
+fi
+
+# 11) DNS fix for Turkey (Discord poison via router DNS)
+echo "DNS duzeltiliyor (Discord icin)..."
+if [ -x "$LOCAL_TOOLS/fix-dns-turkey.sh" ]; then
+	# Run as console user so networksetup applies to their Wi-Fi
+	if [ -n "$USER_NAME" ] && [ "$USER_NAME" != "root" ]; then
+		sudo -u "$USER_NAME" "$LOCAL_TOOLS/fix-dns-turkey.sh" 2>/dev/null || "$LOCAL_TOOLS/fix-dns-turkey.sh" || true
+	else
+		"$LOCAL_TOOLS/fix-dns-turkey.sh" || true
+	fi
 fi
 
 echo ""
@@ -258,6 +302,10 @@ echo "  ctl:        $CTL_PATH"
 echo "  sudoers:    $SUDOERS_FILE ($USER_NAME)"
 echo "  PF yedek:   $SUPPORT_DIR/backups/"
 echo ""
+echo "  desired:    $SUPPORT_DIR/desired-state"
+echo "  watchdog:   /Library/LaunchDaemons/zapret-watchdog.plist"
+echo ""
 echo "Test: sudo $CTL_PATH status"
 echo "      sudo $CTL_PATH start|stop"
+echo "      sudo pkill -x tpws; sleep 35; sudo $CTL_PATH status  # watchdog testi"
 exit 0

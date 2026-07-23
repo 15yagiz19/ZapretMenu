@@ -22,9 +22,14 @@ if [ -x "$ZAPRET_OPT/uninstall_easy.sh" ]; then
 	:
 fi
 
-# launchd
+# launchd (boot job + watchdog)
 launchctl bootout system/zapret 2>/dev/null || true
+launchctl bootout system/zapret-watchdog 2>/dev/null || true
+launchctl unload /Library/LaunchDaemons/zapret.plist 2>/dev/null || true
+launchctl unload /Library/LaunchDaemons/zapret-watchdog.plist 2>/dev/null || true
 rm -f /Library/LaunchDaemons/zapret.plist
+rm -f /Library/LaunchDaemons/zapret-watchdog.plist
+pkill -x tpws 2>/dev/null || true
 
 # PF anchors (from official helpers if available)
 if [ -f "$ZAPRET_OPT/common/pf.sh" ] && [ -f "$ZAPRET_OPT/config" ]; then
