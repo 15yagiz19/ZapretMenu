@@ -1,11 +1,9 @@
 #!/bin/sh
 # Shared helpers for Zapret scripts (portable — no hardcoded home paths)
+# v1.0.7: KeepAlive launchd supervises foreground tpws (instant restart)
 
-# When sourced via `. "$(dirname "$0")/lib.sh"`, $0 is the calling script.
 _SCRIPTS_DIR="$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
 
-# System install layout: scripts in /opt/zapret/local-tools
-# Dev/workspace layout: scripts in <repo>/scripts
 case "$_SCRIPTS_DIR" in
 	/opt/zapret/local-tools)
 		_DEFAULT_HOME="/Library/Application Support/Zapret"
@@ -29,13 +27,18 @@ ALLOWED_REMOTE="https://github.com/bol-van/zapret.git"
 BACKUP_ROOT="${BACKUP_ROOT:-/opt}"
 USER_NAME="${SUDO_USER:-$(id -un)}"
 
-# desired-state: on|off — watchdog only restarts when "on"
 SUPPORT_DIR_FIXED="/Library/Application Support/Zapret"
 DESIRED_STATE_FILE="${DESIRED_STATE_FILE:-$SUPPORT_DIR_FIXED/desired-state}"
 
-# launchd labels
-ZAPRET_LAUNCHD_LABEL="${ZAPRET_LAUNCHD_LABEL:-system/zapret}"
-ZAPRET_PLIST="${ZAPRET_PLIST:-/Library/LaunchDaemons/zapret.plist}"
+# KeepAlive supervised tpws (primary)
+TPWS_LABEL="${TPWS_LABEL:-system/zapret-tpws}"
+TPWS_PLIST="${TPWS_PLIST:-/Library/LaunchDaemons/zapret-tpws.plist}"
+# Boot loader (desired=on → load KeepAlive + PF)
+BOOT_LABEL="${BOOT_LABEL:-system/zapret-boot}"
+BOOT_PLIST="${BOOT_PLIST:-/Library/LaunchDaemons/zapret-boot.plist}"
+# Legacy one-shot + 30s watchdog (disabled when KeepAlive is active)
+LEGACY_LABEL="${LEGACY_LABEL:-system/zapret}"
+LEGACY_PLIST="${LEGACY_PLIST:-/Library/LaunchDaemons/zapret.plist}"
 WATCHDOG_LABEL="${WATCHDOG_LABEL:-system/zapret-watchdog}"
 WATCHDOG_PLIST="${WATCHDOG_PLIST:-/Library/LaunchDaemons/zapret-watchdog.plist}"
 
@@ -85,56 +88,72 @@ get_desired_state() {
 	fi
 }
 
-# Unload one-shot boot job so macOS cannot re-run start after Stop
-zapret_launchd_unload() {
-	launchctl bootout "$ZAPRET_LAUNCHD_LABEL" 2>/dev/null || true
-	launchctl unload "$ZAPRET_PLIST" 2>/dev/null || true
-}
-
-zapret_launchd_load() {
-	if [ -f "$ZAPRET_PLIST" ] || [ -L "$ZAPRET_PLIST" ]; then
-		launchctl bootstrap system "$ZAPRET_PLIST" 2>/dev/null || \
-			launchctl load -w "$ZAPRET_PLIST" 2>/dev/null || true
-	fi
-}
-
-zapret_watchdog_load() {
-	if [ -f "$WATCHDOG_PLIST" ] || [ -L "$WATCHDOG_PLIST" ]; then
-		launchctl bootout "$WATCHDOG_LABEL" 2>/dev/null || true
-		launchctl bootstrap system "$WATCHDOG_PLIST" 2>/dev/null || \
-			launchctl load -w "$WATCHDOG_PLIST" 2>/dev/null || true
-	fi
-}
-
-zapret_watchdog_unload() {
+# Unload legacy one-shot + 30s watchdog (KeepAlive replaces them)
+zapret_legacy_unload() {
+	launchctl bootout "$LEGACY_LABEL" 2>/dev/null || true
+	launchctl unload "$LEGACY_PLIST" 2>/dev/null || true
 	launchctl bootout "$WATCHDOG_LABEL" 2>/dev/null || true
 	launchctl unload "$WATCHDOG_PLIST" 2>/dev/null || true
 }
 
+zapret_tpws_unload() {
+	launchctl bootout "$TPWS_LABEL" 2>/dev/null || true
+	launchctl unload "$TPWS_PLIST" 2>/dev/null || true
+}
+
+zapret_tpws_load() {
+	if [ ! -f "$TPWS_PLIST" ] && [ ! -L "$TPWS_PLIST" ]; then
+		echo "HATA: $TPWS_PLIST yok — system-install ile kurun." >&2
+		return 1
+	fi
+	# Kill daemonized leftovers so only KeepAlive instance runs
+	pkill -x tpws 2>/dev/null || true
+	rm -f /var/run/tpws1.pid 2>/dev/null || true
+	sleep 0.3
+	launchctl bootout "$TPWS_LABEL" 2>/dev/null || true
+	launchctl bootstrap system "$TPWS_PLIST" 2>/dev/null || \
+		launchctl load -w "$TPWS_PLIST" 2>/dev/null || true
+}
+
+zapret_boot_load() {
+	if [ -f "$BOOT_PLIST" ] || [ -L "$BOOT_PLIST" ]; then
+		launchctl bootout "$BOOT_LABEL" 2>/dev/null || true
+		launchctl bootstrap system "$BOOT_PLIST" 2>/dev/null || \
+			launchctl load -w "$BOOT_PLIST" 2>/dev/null || true
+	fi
+}
+
 zapret_start() {
 	if [ ! -x "$ZAPRET_INIT" ]; then
-		echo "HATA: $ZAPRET_INIT bulunamadi. Once system-install.sh calistirin." >&2
+		echo "HATA: $ZAPRET_INIT bulunamadi." >&2
 		return 1
 	fi
 	set_desired_state "on"
-	# Boot job optional; we start daemons explicitly
-	zapret_launchd_load
-	zapret_watchdog_load
-	"$ZAPRET_INIT" start
+	zapret_legacy_unload
+	# PF rules first, then KeepAlive tpws (no --daemon)
+	"$ZAPRET_INIT" start-fw 2>/dev/null || "$ZAPRET_INIT" start-fw || true
+	zapret_tpws_load || return 1
+	zapret_boot_load
+	sleep 1
+	if is_running; then
+		return 0
+	fi
+	# brief wait for launchd spawn
+	sleep 2
+	is_running
 }
 
 zapret_stop() {
-	# User wants off — watchdog must not revive tpws
 	set_desired_state "off"
-	# Unload one-shot start job (not watchdog — it enforces off)
-	zapret_launchd_unload
+	# Unload KeepAlive FIRST so it cannot revive
+	zapret_tpws_unload
+	zapret_legacy_unload
 	if [ -x "$ZAPRET_INIT" ]; then
-		"$ZAPRET_INIT" stop 2>/dev/null || true
+		"$ZAPRET_INIT" stop-fw 2>/dev/null || true
+		"$ZAPRET_INIT" stop-daemons 2>/dev/null || true
 	fi
 	pkill -x tpws 2>/dev/null || true
 	rm -f /var/run/tpws1.pid 2>/dev/null || true
-	# Keep watchdog loaded so it can kill stray tpws if something restarts it
-	zapret_watchdog_load
 }
 
 zapret_restart() {
@@ -158,7 +177,7 @@ zapret_status() {
 	else
 		echo "tpws: yok"
 		if [ "$desired" = "on" ]; then
-			echo "not: desired=on ama tpws yok — watchdog ~30sn icinde baslatmali"
+			echo "not: desired=on ama tpws yok — KeepAlive aninda baslatmali"
 		fi
 	fi
 	if [ -f /etc/pf.anchors/zapret ]; then
@@ -166,19 +185,19 @@ zapret_status() {
 	else
 		echo "PF anchor: yok"
 	fi
-	if launchctl print system/zapret >/dev/null 2>&1; then
-		echo "launchd zapret: kayitli"
-	elif [ -L /Library/LaunchDaemons/zapret.plist ] || [ -f /Library/LaunchDaemons/zapret.plist ]; then
-		echo "launchd zapret: plist var"
+	if launchctl print system/zapret-tpws >/dev/null 2>&1; then
+		echo "launchd tpws: KeepAlive aktif"
+	elif [ -f "$TPWS_PLIST" ] || [ -L "$TPWS_PLIST" ]; then
+		echo "launchd tpws: plist var (unload — Kapat sonrasi normal)"
 	else
-		echo "launchd zapret: yok"
+		echo "launchd tpws: yok"
 	fi
-	if launchctl print system/zapret-watchdog >/dev/null 2>&1; then
-		echo "watchdog: aktif (30sn)"
-	elif [ -f /Library/LaunchDaemons/zapret-watchdog.plist ] || [ -L /Library/LaunchDaemons/zapret-watchdog.plist ]; then
-		echo "watchdog: plist var ama unload"
+	if launchctl print system/zapret-boot >/dev/null 2>&1; then
+		echo "launchd boot: kayitli"
+	elif [ -f "$BOOT_PLIST" ]; then
+		echo "launchd boot: plist var"
 	else
-		echo "watchdog: yok"
+		echo "launchd boot: yok"
 	fi
 	if [ -f "$ZAPRET_OPT/config" ]; then
 		echo "config: $ZAPRET_OPT/config"

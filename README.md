@@ -64,18 +64,20 @@ Kurulum sonrası taşınabilir yollar:
 
 ## Neden "kendi kendine kapanıyor"du?
 
-Eski kurulumda launchd sadece boot’ta bir kez `start` çalıştırıyordu; `tpws` çökünce kimse yeniden başlatmıyordu. Menü 30 sn sonra **Z○** gösteriyordu.
+Eski model: launchd boot’ta bir kez `start` → `tpws --daemon` → script çıkıyordu.  
+`tpws` ölünce kimse tutmuyordu. v1.0.6’daki 30 sn watchdog da boşluk bırakıyordu.
 
-**v1.0.6+:** `zapret-watchdog` her 30 sn kontrol eder:
+**v1.0.7+:** launchd **KeepAlive** ile `tpws` **ön planda** çalışır:
 
-- İstenen durum **açık** (`desired-state=on`) ve `tpws` yoksa → yeniden başlatır  
-- Menüden **Kapat** → `desired-state=off` → watchdog **yeniden açmaz**
+- Menü **Açık** (`desired=on`) → ölse bile **saniyeler içinde** yeniden açılır  
+- Menü **Kapat** (`desired=off`) → job unload → **kalıcı kapalı**  
+- 30 sn bekleme yok
 
 Test:
 
 ```bash
-sudo pkill -x tpws
-sleep 35
+sudo kill $(pgrep -x tpws)
+sleep 3
 sudo zapret-ctl status   # yine Acik olmali
 ```
 

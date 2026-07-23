@@ -217,9 +217,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             statusItem.button?.title = "Z●"
             statusItem.button?.toolTip = "Zapret: Açık"
         } else if desiredOn {
-            statusMenuItem.title = "Durum: Kapalı (yeniden başlatılıyor…)"
+            statusMenuItem.title = "Durum: Kapalı (yeniden başlıyor…)"
             statusItem.button?.title = "Z○"
-            statusItem.button?.toolTip = "İstenen: açık, tpws yok — watchdog ~30 sn içinde başlatır"
+            statusItem.button?.toolTip = "İstenen: açık — KeepAlive anında yeniden başlatır"
         } else {
             statusMenuItem.title = "Durum: Kapalı"
             statusItem.button?.title = "Z○"

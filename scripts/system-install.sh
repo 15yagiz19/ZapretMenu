@@ -157,21 +157,23 @@ if [ -d "$ZAPRET_HOME/config/custom.d" ]; then
 	chmod 644 "$ZAPRET_OPT/init.d/macos/custom.d"/* 2>/dev/null || true
 fi
 
-# 5) local-tools (portable scripts for ctl + watchdog)
+# 5) local-tools (portable scripts + KeepAlive tpws)
 mkdir -p "$LOCAL_TOOLS"
 for f in lib.sh zapret-ctl zapret-start.sh zapret-stop.sh zapret-status.sh \
 	zapret-update-lists.sh zapret-update-engine.sh zapret-rollback-engine.sh \
-	fix-dns-turkey.sh zapret-uninstall.sh verify.sh zapret-watchdog.sh; do
+	fix-dns-turkey.sh zapret-uninstall.sh verify.sh \
+	zapret-tpws-run.sh zapret-boot.sh; do
 	if [ -f "$SCRIPTS_DIR/$f" ]; then
 		cp "$SCRIPTS_DIR/$f" "$LOCAL_TOOLS/$f"
 	fi
 done
-# Watchdog LaunchDaemon template (copied to /Library/LaunchDaemons below)
-if [ -f "$SCRIPTS_DIR/zapret-watchdog.plist" ]; then
-	cp "$SCRIPTS_DIR/zapret-watchdog.plist" "$LOCAL_TOOLS/zapret-watchdog.plist"
-fi
+for f in zapret-tpws.plist zapret-boot.plist; do
+	if [ -f "$SCRIPTS_DIR/$f" ]; then
+		cp "$SCRIPTS_DIR/$f" "$LOCAL_TOOLS/$f"
+	fi
+done
 chmod 755 "$LOCAL_TOOLS"/*.sh "$LOCAL_TOOLS"/zapret-ctl 2>/dev/null || true
-chmod 644 "$LOCAL_TOOLS/zapret-watchdog.plist" 2>/dev/null || true
+chmod 644 "$LOCAL_TOOLS"/*.plist 2>/dev/null || true
 
 # 6) Permissions
 chown -R root:wheel "$ZAPRET_OPT"
@@ -192,21 +194,27 @@ chmod 755 "$LOCAL_TOOLS"/* 2>/dev/null || true
 chown -R "$USER_NAME:staff" "$SUPPORT_DIR" 2>/dev/null || chown -R "$USER_NAME" "$SUPPORT_DIR" 2>/dev/null || true
 chmod -R u+rwX,go+rX "$SUPPORT_DIR" 2>/dev/null || true
 
-# 7) launchd boot start + watchdog
-ln -fs "$ZAPRET_OPT/init.d/macos/zapret.plist" /Library/LaunchDaemons/zapret.plist
-echo "launchd zapret plist baglandi."
+# 7) launchd: KeepAlive tpws + boot loader (replace legacy one-shot + 30s watchdog)
+mkdir -p "$SUPPORT_DIR/logs"
+# Remove legacy jobs if present
+launchctl bootout system/zapret 2>/dev/null || true
+launchctl bootout system/zapret-watchdog 2>/dev/null || true
+rm -f /Library/LaunchDaemons/zapret.plist /Library/LaunchDaemons/zapret-watchdog.plist
 
-# Watchdog: restarts tpws if desired=on but process died
-if [ -f "$LOCAL_TOOLS/zapret-watchdog.plist" ]; then
-	# Ensure ProgramArguments path is absolute local-tools
-	cp "$LOCAL_TOOLS/zapret-watchdog.plist" /Library/LaunchDaemons/zapret-watchdog.plist
-	chmod 644 /Library/LaunchDaemons/zapret-watchdog.plist
-	chown root:wheel /Library/LaunchDaemons/zapret-watchdog.plist
-	echo "launchd watchdog plist kuruldu."
+if [ -f "$LOCAL_TOOLS/zapret-tpws.plist" ]; then
+	cp "$LOCAL_TOOLS/zapret-tpws.plist" /Library/LaunchDaemons/zapret-tpws.plist
+	chmod 644 /Library/LaunchDaemons/zapret-tpws.plist
+	chown root:wheel /Library/LaunchDaemons/zapret-tpws.plist
+	echo "launchd zapret-tpws KeepAlive kuruldu."
+fi
+if [ -f "$LOCAL_TOOLS/zapret-boot.plist" ]; then
+	cp "$LOCAL_TOOLS/zapret-boot.plist" /Library/LaunchDaemons/zapret-boot.plist
+	chmod 644 /Library/LaunchDaemons/zapret-boot.plist
+	chown root:wheel /Library/LaunchDaemons/zapret-boot.plist
+	echo "launchd zapret-boot kuruldu."
 fi
 
 # desired-state default on
-mkdir -p "$SUPPORT_DIR"
 printf 'on\n' > "$SUPPORT_DIR/desired-state"
 chmod 644 "$SUPPORT_DIR/desired-state"
 
@@ -254,30 +262,36 @@ Tailscale uses UDP 41641, not 443 — left alone.
 If you need QUIC back: remove that custom file and restart Zapret.
 QEOF
 
-# 10) Start service + enable watchdog
-echo "Zapret baslatiliyor..."
+# 10) Start: PF + KeepAlive foreground tpws (no --daemon)
+echo "Zapret baslatiliyor (KeepAlive)..."
 printf 'on\n' > "$SUPPORT_DIR/desired-state"
-"$ZAPRET_OPT/init.d/macos/zapret" start
+# Kill any old daemonized tpws
+pkill -x tpws 2>/dev/null || true
+rm -f /var/run/tpws1.pid 2>/dev/null || true
+sleep 0.5
+
+if [ -x "$ZAPRET_OPT/init.d/macos/zapret" ]; then
+	"$ZAPRET_OPT/init.d/macos/zapret" start-fw 2>/dev/null || true
+fi
+
+if [ -f /Library/LaunchDaemons/zapret-tpws.plist ]; then
+	launchctl bootout system/zapret-tpws 2>/dev/null || true
+	launchctl bootstrap system /Library/LaunchDaemons/zapret-tpws.plist 2>/dev/null || \
+	launchctl load -w /Library/LaunchDaemons/zapret-tpws.plist 2>/dev/null || true
+	echo "KeepAlive tpws yuklendi."
+fi
+if [ -f /Library/LaunchDaemons/zapret-boot.plist ]; then
+	launchctl bootout system/zapret-boot 2>/dev/null || true
+	launchctl bootstrap system /Library/LaunchDaemons/zapret-boot.plist 2>/dev/null || \
+	launchctl load -w /Library/LaunchDaemons/zapret-boot.plist 2>/dev/null || true
+fi
 
 sleep 2
 if pgrep -xq tpws; then
-	echo "OK: tpws calisiyor."
+	echo "OK: tpws calisiyor (KeepAlive)."
 else
-	echo "UYARI: tpws henuz gorunmuyor — status kontrol edin."
-	"$ZAPRET_OPT/init.d/macos/zapret" start || true
-fi
-
-if [ -f /Library/LaunchDaemons/zapret.plist ]; then
-	launchctl bootout system/zapret 2>/dev/null || true
-	launchctl bootstrap system /Library/LaunchDaemons/zapret.plist 2>/dev/null || \
-	launchctl load -w /Library/LaunchDaemons/zapret.plist 2>/dev/null || true
-fi
-
-if [ -f /Library/LaunchDaemons/zapret-watchdog.plist ]; then
-	launchctl bootout system/zapret-watchdog 2>/dev/null || true
-	launchctl bootstrap system /Library/LaunchDaemons/zapret-watchdog.plist 2>/dev/null || \
-	launchctl load -w /Library/LaunchDaemons/zapret-watchdog.plist 2>/dev/null || true
-	echo "watchdog yuklendi (30sn aralik)."
+	echo "UYARI: tpws henuz gorunmuyor — status / logs kontrol edin."
+	echo "  $SUPPORT_DIR/logs/tpws-stderr.log"
 fi
 
 # 11) DNS fix for Turkey (Discord poison via router DNS)
@@ -303,9 +317,10 @@ echo "  sudoers:    $SUDOERS_FILE ($USER_NAME)"
 echo "  PF yedek:   $SUPPORT_DIR/backups/"
 echo ""
 echo "  desired:    $SUPPORT_DIR/desired-state"
-echo "  watchdog:   /Library/LaunchDaemons/zapret-watchdog.plist"
+echo "  KeepAlive:  /Library/LaunchDaemons/zapret-tpws.plist"
+echo "  boot:       /Library/LaunchDaemons/zapret-boot.plist"
 echo ""
 echo "Test: sudo $CTL_PATH status"
 echo "      sudo $CTL_PATH start|stop"
-echo "      sudo pkill -x tpws; sleep 35; sudo $CTL_PATH status  # watchdog testi"
+echo "      sudo kill \$(pgrep -x tpws); sleep 3; sudo $CTL_PATH status  # aninda restart"
 exit 0
