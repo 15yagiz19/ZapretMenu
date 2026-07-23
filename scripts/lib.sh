@@ -60,19 +60,46 @@ is_running() {
 	return 1
 }
 
+# launchd label for /Library/LaunchDaemons/zapret.plist
+ZAPRET_LAUNCHD_LABEL="${ZAPRET_LAUNCHD_LABEL:-system/zapret}"
+ZAPRET_PLIST="${ZAPRET_PLIST:-/Library/LaunchDaemons/zapret.plist}"
+
+# Unload so macOS cannot re-run "start" right after menu Stop
+# (do NOT permanently disable — reboot should still RunAtLoad)
+zapret_launchd_unload() {
+	launchctl bootout "$ZAPRET_LAUNCHD_LABEL" 2>/dev/null || true
+	launchctl unload "$ZAPRET_PLIST" 2>/dev/null || true
+}
+
+# Load so menu Start / reboot autostart works again
+zapret_launchd_load() {
+	if [ -f "$ZAPRET_PLIST" ] || [ -L "$ZAPRET_PLIST" ]; then
+		# already loaded is fine
+		launchctl bootstrap system "$ZAPRET_PLIST" 2>/dev/null || \
+			launchctl load -w "$ZAPRET_PLIST" 2>/dev/null || true
+	fi
+}
+
 zapret_start() {
 	if [ ! -x "$ZAPRET_INIT" ]; then
 		echo "HATA: $ZAPRET_INIT bulunamadi. Once system-install.sh calistirin." >&2
 		return 1
 	fi
+	# Ensure launchd will not fight us; start daemons explicitly
+	zapret_launchd_load
 	"$ZAPRET_INIT" start
 }
 
 zapret_stop() {
+	# 1) Detach launchd FIRST so nothing re-starts tpws after we kill it
+	zapret_launchd_unload
+	# 2) Official stop (PF + daemons)
 	if [ -x "$ZAPRET_INIT" ]; then
-		"$ZAPRET_INIT" stop
+		"$ZAPRET_INIT" stop 2>/dev/null || true
 	fi
+	# 3) Hard kill leftovers
 	pkill -x tpws 2>/dev/null || true
+	rm -f /var/run/tpws1.pid 2>/dev/null || true
 }
 
 zapret_restart() {
@@ -99,9 +126,9 @@ zapret_status() {
 		echo "PF anchor: yok"
 	fi
 	if launchctl print system/zapret >/dev/null 2>&1; then
-		echo "launchd: yuklu"
+		echo "launchd: aktif (boot/login acabilir)"
 	elif [ -L /Library/LaunchDaemons/zapret.plist ] || [ -f /Library/LaunchDaemons/zapret.plist ]; then
-		echo "launchd plist: mevcut"
+		echo "launchd: dosya var ama unload (manuel Kapat sonrasi normal)"
 	else
 		echo "launchd: yok"
 	fi

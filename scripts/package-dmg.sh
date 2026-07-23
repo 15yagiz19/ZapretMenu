@@ -6,7 +6,7 @@ set -e
 ROOT="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-VERSION="${VERSION:-1.0.3}"
+VERSION="${VERSION:-1.0.5}"
 ARCH_NOTE="universal (arm64+x86_64)"
 DIST_DIR="$ROOT/dist"
 STAGE="$DIST_DIR/stage"
