@@ -122,6 +122,22 @@ if [ -x "$ZAPRET_OPT/binaries/my/tpws" ]; then
 	ln -sfn ../binaries/my/mdig "$ZAPRET_OPT/mdig/mdig"
 fi
 
+# Critical: macOS control scripts must exist after copy
+if [ ! -x "$ZAPRET_OPT/init.d/macos/zapret" ]; then
+	echo "HATA: /opt/zapret/init.d/macos/zapret yok."
+	echo "Paket bozuk olabilir (init.d kopyalanmamis). Yeni DMG ile tekrar kurun."
+	echo "Kaynak kontrol: $ZAPRET_UPSTREAM/init.d/macos/"
+	ls -la "$ZAPRET_UPSTREAM/init.d/macos" 2>/dev/null || true
+	ls -la "$ZAPRET_OPT/init.d" 2>/dev/null || true
+	exit 1
+fi
+chmod 755 "$ZAPRET_OPT/init.d/macos/zapret" 2>/dev/null || true
+# Fix executable bits on scripts after rsync/cp
+find "$ZAPRET_OPT/init.d" -type f \( -name 'zapret' -o -name '*.sh' \) -exec chmod 755 {} \; 2>/dev/null || true
+find "$ZAPRET_OPT/ipset" -type f -name '*.sh' -exec chmod 755 {} \; 2>/dev/null || true
+find "$ZAPRET_OPT/tpws" -type f -name 'tpws' -exec chmod 755 {} \; 2>/dev/null || true
+find "$ZAPRET_OPT/binaries" -type f -exec chmod 755 {} \; 2>/dev/null || true
+
 # 4) Config + hostlist + custom.d
 cp "$CONFIG_SRC" "$ZAPRET_OPT/config"
 cp "$CONFIG_SRC" "$ZAPRET_OPT/config.default.macos" 2>/dev/null || true

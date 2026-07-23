@@ -6,7 +6,7 @@ set -e
 ROOT="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-VERSION="${VERSION:-1.0.2}"
+VERSION="${VERSION:-1.0.3}"
 ARCH_NOTE="universal (arm64+x86_64)"
 DIST_DIR="$ROOT/dist"
 STAGE="$DIST_DIR/stage"
@@ -66,18 +66,32 @@ cp "$ROOT/menubar/build.sh" "$PAYLOAD/menubar/" 2>/dev/null || true
 # Bundle official engine (no .git — smaller DMG; update-engine needs network later)
 echo "Motor kopyalaniyor (git haric)..."
 if command -v rsync >/dev/null 2>&1; then
+	# NOTE: never exclude '*.d' — that also matches directory names like init.d
+	# and drops the entire macOS service tree (zapret start script).
 	rsync -a \
 		--exclude '.git' \
 		--exclude '.github' \
 		--exclude 'docs' \
 		--exclude 'nfq/windows' \
+		--exclude '*/windows' \
 		--exclude '*.o' \
-		--exclude '*.d' \
 		"$ROOT/upstream/" "$PAYLOAD/bundled/"
 else
-	cp -R "$ROOT/upstream" "$PAYLOAD/bundled"
+	cp -R "$ROOT/upstream/." "$PAYLOAD/bundled/"
 	rm -rf "$PAYLOAD/bundled/.git" "$PAYLOAD/bundled/.github" 2>/dev/null || true
 fi
+
+# Hard require macOS control scripts (fail package if missing)
+if [ ! -x "$PAYLOAD/bundled/init.d/macos/zapret" ]; then
+	echo "HATA: bundled/init.d/macos/zapret eksik — paket bozuldu"
+	ls -laR "$PAYLOAD/bundled/init.d" 2>/dev/null | head -40 || true
+	exit 1
+fi
+if [ ! -f "$PAYLOAD/bundled/init.d/macos/zapret.plist" ]; then
+	echo "HATA: zapret.plist eksik"
+	exit 1
+fi
+echo "OK: init.d/macos/zapret pakette"
 
 # Ensure binary links
 if [ -x "$PAYLOAD/bundled/binaries/my/tpws" ]; then
