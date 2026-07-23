@@ -1,0 +1,14 @@
+# Block QUIC (UDP/443) so clients fall back to TCP, which tpws can desync.
+# Tailscale uses UDP 41641 (WireGuard), not 443 — left alone.
+# Rules land in the zapret-v4 / zapret-v6 PF anchors.
+
+zapret_custom_firewall_v4()
+{
+	echo "block drop out quick inet proto udp from any to any port 443"
+}
+
+zapret_custom_firewall_v6()
+{
+	# IPv6 is disabled in default macOS config; keep for completeness if re-enabled
+	echo "block drop out quick inet6 proto udp from any to any port 443"
+}

@@ -1,0 +1,20 @@
+Zapret macOS — hizli baslangic
+================================
+
+ARKADASA GONDER:
+  ./scripts/package-dmg.sh
+  → dist/Zapret-macOS.dmg
+
+GELISTIRICI (bu makine):
+  sudo ./scripts/system-install.sh
+  ./scripts/install-menubar.sh
+
+Dogrulama:
+  ./scripts/verify.sh
+  sudo /usr/local/bin/zapret-ctl status
+
+Kaldirma:
+  sudo /opt/zapret/local-tools/zapret-uninstall.sh --yes
+
+Detay: README.md
+DMG alici adimlari: dist icindeki README-KURULUM.txt

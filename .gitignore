@@ -1,0 +1,22 @@
+# macOS
+.DS_Store
+**/.DS_Store
+
+# Local runtime / secrets / machine state
+backups/
+logs/
+*.log
+
+# Nested git when upstream is a full clone (we vendor source without .git)
+upstream/.git/
+
+# Build intermediates (keep shipped DMG artifacts)
+dist/stage/
+menubar/ZapretToggle.app/
+**/__pycache__/
+*.swp
+*~
+
+# Optional local overrides
+.env
+.env.*

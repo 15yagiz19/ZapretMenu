@@ -1,0 +1,6 @@
+QUIC (UDP/443) notu:
+macOS tpws only handles TCP. If a site still fails with HTTP/3,
+you can block QUIC for that app or system-wide so it falls back to TCP:
+  - Browser: disable QUIC in chrome://flags (Experimental QUIC)
+  - Or add a custom PF rule (advanced) — not installed by default to avoid breaking
+    unrelated UDP.

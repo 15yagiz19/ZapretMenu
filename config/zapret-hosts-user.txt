@@ -1,0 +1,103 @@
+# Turkey practical hostlist for zapret (hostlist mode)
+# One domain per line. Subdomains are included automatically.
+# DO NOT add Tailscale / MagicDNS / VDS domains here.
+
+# Discord
+discord.com
+discord.gg
+discord.media
+discordapp.com
+discordapp.net
+discordcdn.com
+discordstatus.com
+gateway.discord.gg
+cdn.discordapp.com
+media.discordapp.net
+images-ext-1.discordapp.net
+images-ext-2.discordapp.net
+
+# YouTube / Google video
+youtube.com
+youtu.be
+ytimg.com
+ggpht.com
+googlevideo.com
+youtube-nocookie.com
+yt3.ggpht.com
+jnn-pa.googleapis.com
+youtubei.googleapis.com
+yt.be
+
+# Instagram / Meta
+instagram.com
+cdninstagram.com
+fbcdn.net
+facebook.com
+facebook.net
+fb.com
+meta.com
+messenger.com
+
+# Twitter / X
+twitter.com
+x.com
+t.co
+twimg.com
+pscp.tv
+periscope.tv
+tweetdeck.com
+
+# Reddit
+reddit.com
+redd.it
+redditmedia.com
+redditstatic.com
+redd.it
+
+# TikTok
+tiktok.com
+tiktokv.com
+tiktokcdn.com
+musical.ly
+byteoversea.com
+ibyteimg.com
+
+# Telegram (web / CDN — not Tailscale)
+telegram.org
+t.me
+telegra.ph
+telegram.me
+telesco.pe
+
+# Medium / news often blocked
+medium.com
+nytimes.com
+bbc.com
+bbc.co.uk
+theguardian.com
+
+# Spotify (sometimes restricted)
+spotify.com
+scdn.co
+spoti.fi
+
+# Twitch
+twitch.tv
+ttvnw.net
+jtvnw.net
+twitchcdn.net
+
+# SoundCloud
+soundcloud.com
+sndcdn.com
+
+# GitHub (occasionally constrained)
+github.com
+githubusercontent.com
+githubassets.com
+github.io
+
+# Cloudflare pages / common CDNs used by blocked sites
+# (kept minimal — hostlist mode only fools matching hosts)
+cloudflare.com
+cloudflareinsights.com
