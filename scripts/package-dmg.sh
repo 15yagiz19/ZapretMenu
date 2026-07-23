@@ -6,7 +6,7 @@ set -e
 ROOT="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-VERSION="${VERSION:-1.0.0}"
+VERSION="${VERSION:-1.0.1}"
 ARCH_NOTE="universal (arm64+x86_64)"
 DIST_DIR="$ROOT/dist"
 STAGE="$DIST_DIR/stage"
@@ -129,32 +129,50 @@ echo "INSTALL_OK"
 ROOTEOF
 chmod 755 "$PAYLOAD/install-as-root.sh"
 
-# --- ZapretKurulum.app (AppleScript applet style) ---
+# --- ZapretKurulum.app ---
+# CRITICAL: embed payload INSIDE the .app bundle.
+# macOS App Translocation (Gatekeeper) copies only the .app to a random path;
+# sibling folders like ./payload on the DMG volume then disappear → "payload not found".
 INSTALLER_APP="$STAGE/Zapret Kurulum.app"
 CONTENTS="$INSTALLER_APP/Contents"
 MACOS_D="$CONTENTS/MacOS"
 RES="$CONTENTS/Resources"
 mkdir -p "$MACOS_D" "$RES"
 
-# Copy payload inside the app so double-click works even if DMG is ejected later mid-run
-# (payload stays next to app on volume; we resolve relative to app)
-# For simplicity, payload sits on DMG root next to the app — install script finds it via relative path.
+echo "payload uygulama icine gomuluyor (App Translocation guvenli)..."
+rm -rf "$RES/payload"
+cp -a "$PAYLOAD" "$RES/payload"
+# Keep a copy on DMG root too (for Kurulum.command fallback + manual inspection)
+# PAYLOAD already at $STAGE/payload
 
 cat > "$MACOS_D/ZapretKurulum" <<'APPEOF'
 #!/bin/sh
 # Zapret Kurulum — double-click installer (Turkish UI via osascript)
 set -e
 
-APP_DIR="$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)"
-# When inside .app: .../Zapret Kurulum.app/Contents/MacOS -> app root is ../..
-# Payload is sibling of .app on the DMG volume
-VOL_ROOT="$(CDPATH= cd -- "$APP_DIR/.." && pwd)"
-PAYLOAD="$VOL_ROOT/payload"
+# Resolve real path even under App Translocation / spaces / symlinks
+SELF="$0"
+case "$SELF" in
+	/*) ;;
+	*) SELF="$(pwd)/$SELF" ;;
+esac
+# Contents/MacOS/ZapretKurulum → app bundle root
+APP_DIR="$(CDPATH= cd -- "$(dirname "$SELF")/../.." && pwd -P 2>/dev/null || CDPATH= cd -- "$(dirname "$SELF")/../.." && pwd)"
+VOL_ROOT="$(CDPATH= cd -- "$APP_DIR/.." && pwd -P 2>/dev/null || CDPATH= cd -- "$APP_DIR/.." && pwd)"
 
-# Also try Resources/payload if bundled inside app
-if [ ! -d "$PAYLOAD" ] && [ -d "$APP_DIR/Contents/Resources/payload" ]; then
-	PAYLOAD="$APP_DIR/Contents/Resources/payload"
-fi
+# Search order: embedded (preferred) → sibling on volume → absolute volume roots
+PAYLOAD=""
+for CAND in \
+	"$APP_DIR/Contents/Resources/payload" \
+	"$VOL_ROOT/payload" \
+	"/Volumes/Zapret Kurulum/payload" \
+	"/Volumes/ZapretKurulum/payload"
+do
+	if [ -d "$CAND" ] && [ -x "$CAND/install-as-root.sh" ]; then
+		PAYLOAD="$CAND"
+		break
+	fi
+done
 
 START=$(osascript <<'OSA'
 try
@@ -178,8 +196,12 @@ OSA
 )
 [ "$START" = "ok" ] || exit 0
 
-if [ ! -d "$PAYLOAD" ]; then
-	osascript -e 'display dialog "HATA: payload klasoru bulunamadi.\nDMG icindeki dosyalari bozmayin." buttons {"Tamam"} default button 1 with title "Zapret" with icon stop'
+if [ -z "$PAYLOAD" ] || [ ! -d "$PAYLOAD" ]; then
+	DETAIL=$(printf 'Aranan yerler:\n• %s\n• %s\n\nUygulama yolu:\n%s' \
+		"$APP_DIR/Contents/Resources/payload" \
+		"$VOL_ROOT/payload" \
+		"$APP_DIR" | sed 's/"//g')
+	osascript -e "display dialog \"HATA: payload klasoru bulunamadi.\n\n$DETAIL\n\nDMG'yi acik birakin; sadece .app'i kopyalamayin.\nAlternatif: Kurulum.command\" buttons {\"Tamam\"} default button 1 with title \"Zapret\" with icon stop"
 	exit 1
 fi
 
@@ -283,14 +305,28 @@ echo -n "APPL????" > "$CONTENTS/PkgInfo"
 # Also ship a double-click .command fallback
 cat > "$STAGE/Kurulum.command" <<'CMDEOF'
 #!/bin/sh
-cd "$(dirname "$0")"
-PAYLOAD="$(pwd)/payload"
-if [ ! -x "$PAYLOAD/install-as-root.sh" ]; then
-	echo "payload bulunamadi"
+cd "$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
+PAYLOAD=""
+for CAND in \
+	"./payload" \
+	"./Zapret Kurulum.app/Contents/Resources/payload" \
+	"/Volumes/Zapret Kurulum/payload" \
+	"/Volumes/Zapret Kurulum/Zapret Kurulum.app/Contents/Resources/payload"
+do
+	if [ -x "$CAND/install-as-root.sh" ]; then
+		PAYLOAD="$CAND"
+		break
+	fi
+done
+if [ -z "$PAYLOAD" ]; then
+	echo "payload bulunamadi. DMG acik mi? Dosyalari bozmayin."
+	echo "Klasor: $(pwd)"
+	ls -la
 	read -r _
 	exit 1
 fi
 echo "Zapret kurulumu — yonetici sifresi istenecek..."
+echo "payload: $PAYLOAD"
 sudo "$PAYLOAD/install-as-root.sh"
 echo ""
 echo "Bitti. Pencereyi kapatabilirsiniz."
@@ -315,7 +351,10 @@ erisimini kolaylastirmaya calisir.
 
 1) Bu DMG'yi acin (cift tik).
 
-2) "Zapret Kurulum" uygulamasina cift tiklayin.
+2) DMG penceresini ACIK birakin.
+   "Zapret Kurulum" uygulamasina cift tiklayin
+   (masaüstüne veya Applications'a TAŞIMAYIN —
+    sadece .app kopyalanirsa kurulum bozulur).
    • macOS "kimligi dogrulanamadi" derse:
      sag tik > Ac > Ac
    • Mac sifrenizi bir kez girin (yonetici).
