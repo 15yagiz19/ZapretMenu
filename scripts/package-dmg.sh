@@ -6,7 +6,7 @@ set -e
 ROOT="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-VERSION="${VERSION:-1.0.1}"
+VERSION="${VERSION:-1.0.2}"
 ARCH_NOTE="universal (arm64+x86_64)"
 DIST_DIR="$ROOT/dist"
 STAGE="$DIST_DIR/stage"
@@ -146,29 +146,25 @@ cp -a "$PAYLOAD" "$RES/payload"
 # PAYLOAD already at $STAGE/payload
 
 cat > "$MACOS_D/ZapretKurulum" <<'APPEOF'
-#!/bin/sh
-# Zapret Kurulum — double-click installer (Turkish UI via osascript)
-set -e
+#!/bin/bash
+# Zapret Kurulum — double-click installer (Turkish UI)
+# bash (not sh) for reliable path handling under App Translocation
+set +e
 
-# Resolve real path even under App Translocation / spaces / symlinks
-SELF="$0"
-case "$SELF" in
-	/*) ;;
-	*) SELF="$(pwd)/$SELF" ;;
-esac
-# Contents/MacOS/ZapretKurulum → app bundle root
-APP_DIR="$(CDPATH= cd -- "$(dirname "$SELF")/../.." && pwd -P 2>/dev/null || CDPATH= cd -- "$(dirname "$SELF")/../.." && pwd)"
-VOL_ROOT="$(CDPATH= cd -- "$APP_DIR/.." && pwd -P 2>/dev/null || CDPATH= cd -- "$APP_DIR/.." && pwd)"
+# Resolve this script → app bundle (Contents/MacOS/ZapretKurulum)
+BIN_DIR="$(cd "$(dirname "$0")" && pwd)"
+APP_DIR="$(cd "$BIN_DIR/../.." && pwd)"
+VOL_ROOT="$(cd "$APP_DIR/.." && pwd)"
 
-# Search order: embedded (preferred) → sibling on volume → absolute volume roots
+# Prefer embedded payload (survives App Translocation)
 PAYLOAD=""
 for CAND in \
 	"$APP_DIR/Contents/Resources/payload" \
 	"$VOL_ROOT/payload" \
 	"/Volumes/Zapret Kurulum/payload" \
-	"/Volumes/ZapretKurulum/payload"
+	"/Volumes/Zapret Kurulum/Zapret Kurulum.app/Contents/Resources/payload"
 do
-	if [ -d "$CAND" ] && [ -x "$CAND/install-as-root.sh" ]; then
+	if [[ -d "$CAND" && -x "$CAND/install-as-root.sh" ]]; then
 		PAYLOAD="$CAND"
 		break
 	fi
@@ -194,55 +190,55 @@ on error number -128
 end try
 OSA
 )
-[ "$START" = "ok" ] || exit 0
+[[ "$START" == "ok" ]] || exit 0
 
-if [ -z "$PAYLOAD" ] || [ ! -d "$PAYLOAD" ]; then
-	DETAIL=$(printf 'Aranan yerler:\n• %s\n• %s\n\nUygulama yolu:\n%s' \
-		"$APP_DIR/Contents/Resources/payload" \
-		"$VOL_ROOT/payload" \
-		"$APP_DIR" | sed 's/"//g')
-	osascript -e "display dialog \"HATA: payload klasoru bulunamadi.\n\n$DETAIL\n\nDMG'yi acik birakin; sadece .app'i kopyalamayin.\nAlternatif: Kurulum.command\" buttons {\"Tamam\"} default button 1 with title \"Zapret\" with icon stop"
+if [[ -z "$PAYLOAD" || ! -d "$PAYLOAD" ]]; then
+	osascript <<OSA
+display dialog "HATA: payload klasoru bulunamadi.
+
+Uygulama: $APP_DIR
+
+DMG penceresini acik birakin.
+Alternatif: Kurulum.command dosyasina cift tiklayin." buttons {"Tamam"} default button 1 with title "Zapret" with icon stop
+OSA
 	exit 1
 fi
 
-# Clear quarantine on payload scripts if needed
 xattr -dr com.apple.quarantine "$PAYLOAD" 2>/dev/null || true
 chmod -R u+rx "$PAYLOAD/scripts" "$PAYLOAD/install-as-root.sh" 2>/dev/null || true
 
 LOG=$(mktemp /tmp/zapret-install.XXXXXX)
-# Escape for AppleScript string (paths may contain spaces, e.g. /Volumes/Zapret Kurulum)
+ERR=$(mktemp /tmp/zapret-install-err.XXXXXX)
+INSTALL_SH="$PAYLOAD/install-as-root.sh"
+
+# Escape for embedding in AppleScript double-quoted strings
 as_escape() {
 	printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
 }
-PAYLOAD_AS=$(as_escape "$PAYLOAD")
+INSTALL_AS=$(as_escape "$INSTALL_SH")
 LOG_AS=$(as_escape "$LOG")
-INSTALL_SH_AS=$(as_escape "$PAYLOAD/install-as-root.sh")
 
-set +e
-# Prefer osascript admin privileges (GUI password dialog)
-osascript <<OSA 2>"$LOG.err"
-do shell script "\"$INSTALL_SH_AS\" > \"$LOG_AS\" 2>&1" with administrator privileges
+# GUI admin password dialog
+osascript <<OSA 2>"$ERR"
+do shell script "\"$INSTALL_AS\" > \"$LOG_AS\" 2>&1" with administrator privileges
 OSA
 RC=$?
-set -e
 
-if [ "$RC" -ne 0 ]; then
-	# Fallback: open Terminal with sudo
+if [[ $RC -ne 0 ]]; then
+	# Fallback: Terminal + sudo
 	osascript <<OSA
 try
 	display dialog "Yonetici penceresi iptal edildi veya basarisiz.
 
 Terminal ile kurulum denensin mi? (sifre sorulacak)" buttons {"Iptal", "Terminal ac"} default button "Terminal ac" with title "Zapret"
+	tell application "Terminal"
+		activate
+		do script "sudo \"$INSTALL_AS\"; echo; echo 'Pencereyi kapatabilirsiniz.'; read -r _"
+	end tell
 on error number -128
-	return
 end try
 OSA
-	osascript <<OSA
-tell application "Terminal"
-	activate
-	do script "sudo \"$INSTALL_SH_AS\"; echo; echo 'Pencereyi kapatabilirsiniz.'; read -r _"
-end tell
-OSA
+	rm -f "$LOG" "$ERR" 2>/dev/null
 	exit 0
 fi
 
@@ -260,12 +256,17 @@ WARP kapali olsun. Tailscale acik kalabilir.
 DNS bozulursa: menüden «DNS duzelt (Wi‑Fi)»" buttons {"Tamam"} default button 1 with title "Zapret — Basarili" with icon note
 OSA
 else
-	BODY=$(tail -c 600 "$LOG" 2>/dev/null | tr '\n' ' ' | sed 's/"//g')
-	osascript -e "display dialog \"Kurulum tamamlanamadi.\n\n$BODY\" buttons {\"Tamam\"} default button 1 with title \"Zapret — Hata\" with icon stop"
+	BODY=$(tail -c 500 "$LOG" 2>/dev/null | tr '\n' ' ' | tr '"' "'")
+	osascript <<OSA
+display dialog "Kurulum tamamlanamadi.
+
+$BODY" buttons {"Tamam"} default button 1 with title "Zapret — Hata" with icon stop
+OSA
+	rm -f "$LOG" "$ERR" 2>/dev/null
 	exit 1
 fi
 
-rm -f "$LOG" "$LOG.err" 2>/dev/null || true
+rm -f "$LOG" "$ERR" 2>/dev/null
 exit 0
 APPEOF
 chmod 755 "$MACOS_D/ZapretKurulum"
@@ -301,6 +302,9 @@ cat > "$CONTENTS/Info.plist" <<'PLIST'
 </plist>
 PLIST
 echo -n "APPL????" > "$CONTENTS/PkgInfo"
+# Ad-hoc sign (not notarized) — reduces "damaged / won't open" for shell-script apps
+codesign --force --deep --sign - "$INSTALLER_APP" 2>/dev/null || true
+xattr -cr "$INSTALLER_APP" 2>/dev/null || true
 
 # Also ship a double-click .command fallback
 cat > "$STAGE/Kurulum.command" <<'CMDEOF'
