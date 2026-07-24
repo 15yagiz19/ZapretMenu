@@ -145,7 +145,10 @@ discord_dns_poisoned() {
 
 curl_ok() {
 	url=$1
-	code=$(curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 5 --max-time 10 -I "$url" 2>/dev/null || echo 000)
+	# Prefer GET: Discord/Cloudflare often flaky on HEAD (-I) → false 000
+	code=$(curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 6 --max-time 12 \
+		-L -A "ZapretMenu/1.0" "$url" 2>/dev/null || echo 000)
+	code=$(printf '%s' "$code" | tr -cd '0-9' | tail -c 3)
 	case "$code" in
 		2*|3*) return 0 ;;
 		*) return 1 ;;
