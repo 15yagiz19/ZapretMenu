@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var isBusy = false
     private var isOn = false
+    private var updateAvailable: String? // remote version if any
 
     private var statusMenuItem: NSMenuItem!
     private var openItem: NSMenuItem!
@@ -20,6 +21,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var refreshItem: NSMenuItem!
     private var listsItem: NSMenuItem!
     private var dnsItem: NSMenuItem!
+    private var checkUpdateItem: NSMenuItem!
+    private var selfUpdateItem: NSMenuItem!
     private var engineItem: NSMenuItem!
     private var rollbackItem: NSMenuItem!
 
@@ -62,7 +65,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         dnsItem.target = self
         menu.addItem(dnsItem)
 
-        engineItem = NSMenuItem(title: "Motoru güncelle…", action: #selector(updateEngine), keyEquivalent: "")
+        menu.addItem(NSMenuItem.separator())
+
+        checkUpdateItem = NSMenuItem(title: "Güncellemeleri kontrol et", action: #selector(checkUpdate), keyEquivalent: "")
+        checkUpdateItem.target = self
+        menu.addItem(checkUpdateItem)
+
+        selfUpdateItem = NSMenuItem(title: "Uygulamayı güncelle…", action: #selector(selfUpdate), keyEquivalent: "")
+        selfUpdateItem.target = self
+        menu.addItem(selfUpdateItem)
+
+        engineItem = NSMenuItem(title: "Motoru güncelle (bol-van)…", action: #selector(updateEngine), keyEquivalent: "")
         engineItem.target = self
         menu.addItem(engineItem)
 
@@ -81,6 +94,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             self?.refreshStatus()
+        }
+
+        // Background update check shortly after launch, then daily
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 8) { [weak self] in
+            self?.backgroundCheckUpdate(showAlertIfNone: false)
+        }
+        Timer.scheduledTimer(withTimeInterval: 86400, repeats: true) { [weak self] _ in
+            self?.backgroundCheckUpdate(showAlertIfNone: false)
         }
     }
 
@@ -159,17 +180,131 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    @objc private func updateEngine() {
+    @objc private func checkUpdate() {
+        guard !isBusy else { return }
+        setBusy(true, title: "Güncelleme kontrol…")
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let result = self?.runProcess(args: ["check-update"], useSudo: true)
+                ?? self?.runProcess(args: ["check-update"], useSudo: false)
+                ?? (1, "ctl yok")
+            DispatchQueue.main.async {
+                self?.setBusy(false, title: nil)
+                self?.handleCheckUpdateResult(result.1, showAlertIfNone: true)
+                self?.refreshStatus()
+            }
+        }
+    }
+
+    private func backgroundCheckUpdate(showAlertIfNone: Bool) {
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let result = self?.runProcess(args: ["check-update"], useSudo: true)
+                ?? self?.runProcess(args: ["check-update"], useSudo: false)
+                ?? (1, "")
+            DispatchQueue.main.async {
+                self?.handleCheckUpdateResult(result.1, showAlertIfNone: showAlertIfNone)
+            }
+        }
+    }
+
+    private func handleCheckUpdateResult(_ out: String, showAlertIfNone: Bool) {
+        let line = out.split(separator: "\n").map(String.init).first ?? out
+        if line.hasPrefix("UPDATE_AVAILABLE") {
+            let parts = line.split(separator: " ").map(String.init)
+            let remote = parts.count >= 3 ? parts[2] : "?"
+            updateAvailable = remote
+            selfUpdateItem.title = "Uygulamayı güncelle… (v\(remote))"
+            if showAlertIfNone {
+                let alert = NSAlert()
+                alert.messageText = "Güncelleme var: v\(remote)"
+                alert.informativeText = "Menüden «Uygulamayı güncelle…» ile yükleyebilirsiniz.\nEski kurulum silinir, yenisi kurulur (hostlist korunur)."
+                alert.alertStyle = .informational
+                alert.addButton(withTitle: "Tamam")
+                alert.runModal()
+            }
+        } else if line.hasPrefix("UP_TO_DATE") {
+            updateAvailable = nil
+            selfUpdateItem.title = "Uygulamayı güncelle…"
+            if showAlertIfNone {
+                let local = line.split(separator: " ").map(String.init).dropFirst().first ?? "?"
+                let alert = NSAlert()
+                alert.messageText = "Güncelsiniz"
+                alert.informativeText = "Kurulu sürüm: v\(local)"
+                alert.alertStyle = .informational
+                alert.runModal()
+            }
+        } else if showAlertIfNone {
+            let alert = NSAlert()
+            alert.messageText = "Kontrol başarısız"
+            alert.informativeText = line.isEmpty ? "Ağ veya GitHub API erişilemedi." : String(line.prefix(400))
+            alert.alertStyle = .warning
+            alert.runModal()
+        }
+    }
+
+    @objc private func selfUpdate() {
         let alert = NSAlert()
-        alert.messageText = "Motoru güncelle?"
+        alert.messageText = "Uygulamayı güncelle?"
         alert.informativeText = """
-        Bu işlem birkaç dakika sürebilir:
-        • Mevcut motor yedeklenir
-        • Sadece resmi bol-van/zapret kaynağından güncellenir
-        • Hostlist ve ayarlarınız korunur
-        • Başarısız olursa otomatik geri alınır
+        GitHub Releases’ten son ZapretMenu paketi indirilir:
+        • Eski /opt/zapret yedeklenir, sonra temiz kurulur
+        • Motor, launchd (KeepAlive), scriptler ve menü yenilenir
+        • Hostlist’iniz korunur
+        • SHA256 doğrulaması zorunludur
 
         Devam edilsin mi?
+        """
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Güncelle")
+        alert.addButton(withTitle: "İptal")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        guard !isBusy else { return }
+        setBusy(true, title: "Güncelleniyor…")
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let result = self?.runProcess(args: ["self-update"], useSudo: true) ?? (1, "ctl yok")
+            DispatchQueue.main.async {
+                self?.setBusy(false, title: nil)
+                self?.refreshStatus()
+                let alert = NSAlert()
+                let body = result.1.trimmingCharacters(in: .whitespacesAndNewlines)
+                if result.0 == 0, body.contains("UPDATED") || body.contains("UP_TO_DATE") {
+                    alert.messageText = body.contains("UP_TO_DATE") ? "Zaten güncel" : "Güncelleme tamam"
+                    alert.informativeText = """
+                    \(String(body.suffix(500)))
+
+                    Menü uygulaması yenilendiyse bir kez kapatıp tekrar açın:
+                    open -a ZapretToggle
+                    """
+                    alert.alertStyle = .informational
+                    self?.updateAvailable = nil
+                    self?.selfUpdateItem.title = "Uygulamayı güncelle…"
+                    // Relaunch menubar if possible
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        let p = Process()
+                        p.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+                        p.arguments = ["-a", "ZapretToggle"]
+                        try? p.run()
+                    }
+                } else {
+                    alert.messageText = "Güncelleme başarısız"
+                    alert.informativeText = body.isEmpty
+                        ? "Terminal: sudo \(ctlPath) self-update"
+                        : String(body.prefix(800))
+                    alert.alertStyle = .warning
+                }
+                alert.runModal()
+            }
+        }
+    }
+
+    @objc private func updateEngine() {
+        let alert = NSAlert()
+        alert.messageText = "Motoru güncelle (bol-van)?"
+        alert.informativeText = """
+        Sadece bol-van/zapret motor kaynağını günceller.
+        Paket / menü / launchd için «Uygulamayı güncelle…» kullanın.
+
+        Devam?
         """
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Güncelle")
@@ -194,7 +329,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let result = self?.runProcess(args: ["status"], useSudo: true) ?? (1, "ctl yok")
             let out = result.1
-            // Prefer explicit "Zapret: Acik/Kapali" line over substring matches
             let on: Bool
             if out.contains("Zapret: Acik") || out.contains("Zapret: Açık") {
                 on = true
@@ -212,24 +346,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func applyStatus(on: Bool, desiredOn: Bool = true, detail: String = "") {
         isOn = on
+        var title: String
         if on {
-            statusMenuItem.title = "Durum: Açık"
+            title = "Durum: Açık"
             statusItem.button?.title = "Z●"
             statusItem.button?.toolTip = "Zapret: Açık"
         } else if desiredOn {
-            statusMenuItem.title = "Durum: Kapalı (yeniden başlıyor…)"
+            title = "Durum: Kapalı (yeniden başlıyor…)"
             statusItem.button?.title = "Z○"
             statusItem.button?.toolTip = "İstenen: açık — KeepAlive anında yeniden başlatır"
         } else {
-            statusMenuItem.title = "Durum: Kapalı"
+            title = "Durum: Kapalı"
             statusItem.button?.title = "Z○"
             statusItem.button?.toolTip = "Zapret: Kapalı"
         }
+        if let v = updateAvailable {
+            title += " · Güncelleme: v\(v)"
+        }
+        statusMenuItem.title = title
         openItem.isEnabled = !isBusy && !on
         closeItem.isEnabled = !isBusy && on
         if !isBusy {
             listsItem.isEnabled = true
             dnsItem.isEnabled = true
+            checkUpdateItem.isEnabled = true
+            selfUpdateItem.isEnabled = true
             engineItem.isEnabled = true
             rollbackItem.isEnabled = true
             refreshItem.isEnabled = true
@@ -243,6 +384,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         closeItem.isEnabled = !busy
         listsItem.isEnabled = !busy
         dnsItem.isEnabled = !busy
+        checkUpdateItem.isEnabled = !busy
+        selfUpdateItem.isEnabled = !busy
         engineItem.isEnabled = !busy
         rollbackItem.isEnabled = !busy
         refreshItem.isEnabled = !busy

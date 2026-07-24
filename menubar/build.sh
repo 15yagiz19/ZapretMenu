@@ -8,10 +8,20 @@ APP_DIR="$DIR/$APP_NAME.app"
 CONTENTS="$APP_DIR/Contents"
 MACOS="$CONTENTS/MacOS"
 RES="$CONTENTS/Resources"
-SDK="$(xcrun --show-sdk-path)"
+# Prefer an SDK that matches the installed swiftc (avoid 27.x SDK with older CLT)
+if [ -n "$SDKROOT" ] && [ -d "$SDKROOT" ]; then
+	SDK="$SDKROOT"
+elif [ -d /Library/Developer/CommandLineTools/SDKs/MacOSX26.sdk ]; then
+	SDK=/Library/Developer/CommandLineTools/SDKs/MacOSX26.sdk
+elif [ -d /Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk ]; then
+	SDK=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk
+else
+	SDK="$(xcrun --show-sdk-path)"
+fi
 MIN_OS="${MIN_OS:-13.0}"
 
 echo "Derleniyor: $APP_NAME (universal arm64+x86_64)..."
+echo "SDK: $SDK"
 
 rm -rf "$APP_DIR"
 mkdir -p "$MACOS" "$RES"

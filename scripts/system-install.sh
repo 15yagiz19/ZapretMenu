@@ -73,8 +73,26 @@ if [ ! -f "$CONFIG_SRC" ] || [ ! -f "$HOSTLIST_SRC" ]; then
 	exit 1
 fi
 
+# Package version (set by package-dmg / self-update; fallback)
+ZAPRET_VERSION="${ZAPRET_VERSION:-}"
+if [ -z "$ZAPRET_VERSION" ] && [ -f "$ZAPRET_HOME/VERSION" ]; then
+	ZAPRET_VERSION=$(tr -d ' \t\r\n' < "$ZAPRET_HOME/VERSION")
+fi
+if [ -z "$ZAPRET_VERSION" ] && [ -f "$SCRIPTS_DIR/../VERSION" ]; then
+	ZAPRET_VERSION=$(tr -d ' \t\r\n' < "$SCRIPTS_DIR/../VERSION")
+fi
+[ -n "$ZAPRET_VERSION" ] || ZAPRET_VERSION="1.1.0"
+
+# Preserve user hostlist if already customized under Application Support
+USER_HOSTLIST_SAVED=""
+if [ -f "$SUPPORT_DIR/config/zapret-hosts-user.txt" ]; then
+	USER_HOSTLIST_SAVED=$(mktemp)
+	cp "$SUPPORT_DIR/config/zapret-hosts-user.txt" "$USER_HOSTLIST_SAVED"
+	echo "Kullanici hostlist korunacak: $SUPPORT_DIR/config/zapret-hosts-user.txt"
+fi
+
 # 1) Support dir + PF backup
-mkdir -p "$SUPPORT_DIR/backups" "$SUPPORT_DIR/config" "$SUPPORT_DIR/logs"
+mkdir -p "$SUPPORT_DIR/backups" "$SUPPORT_DIR/config" "$SUPPORT_DIR/logs" "$SUPPORT_DIR/cache"
 TS=$(date +%Y%m%d-%H%M%S)
 if [ -f /etc/pf.conf ]; then
 	cp -a /etc/pf.conf "$SUPPORT_DIR/backups/pf.conf.pre-install.$TS"
@@ -82,25 +100,53 @@ if [ -f /etc/pf.conf ]; then
 	echo "PF yedek: /etc/pf.conf.bak.zapret.$TS"
 fi
 
-# 2) Stop existing
+# 2) Clean stop + unload ALL zapret launchd jobs (KeepAlive + boot + legacy)
+echo "Eski servisler durduruluyor..."
+for lbl in system/zapret-tpws system/zapret-boot system/zapret system/zapret-watchdog; do
+	launchctl bootout "$lbl" 2>/dev/null || true
+done
 if [ -x "$ZAPRET_OPT/init.d/macos/zapret" ]; then
 	"$ZAPRET_OPT/init.d/macos/zapret" stop 2>/dev/null || true
+	"$ZAPRET_OPT/init.d/macos/zapret" stop-fw 2>/dev/null || true
+	"$ZAPRET_OPT/init.d/macos/zapret" stop-daemons 2>/dev/null || true
+fi
+if [ -x "$ZAPRET_OPT/local-tools/zapret-stop.sh" ]; then
+	"$ZAPRET_OPT/local-tools/zapret-stop.sh" 2>/dev/null || true
 fi
 pkill -x tpws 2>/dev/null || true
-launchctl bootout system/zapret 2>/dev/null || true
+rm -f /var/run/tpws1.pid 2>/dev/null || true
+sleep 0.5
 
-# 3) Install tree to /opt/zapret
+# 3) Clean reinstall: single backup, remove old prev/bak pile
+ZAPRET_CLEAN_REINSTALL="${ZAPRET_CLEAN_REINSTALL:-1}"
+BACKUP_DIR=""
 if [ -d "$ZAPRET_OPT" ]; then
-	mv "$ZAPRET_OPT" "/opt/zapret.prev.$TS"
-	echo "Eski kurulum tasindi: /opt/zapret.prev.$TS"
+	if [ "$ZAPRET_CLEAN_REINSTALL" = "1" ]; then
+		BACKUP_DIR="/opt/zapret.bak.$TS"
+		mv "$ZAPRET_OPT" "$BACKUP_DIR"
+		echo "Eski kurulum yedeklendi: $BACKUP_DIR"
+		# Keep only the newest bak + remove legacy prev.* piles
+		ls -1d /opt/zapret.prev.* 2>/dev/null | while read -r d; do
+			rm -rf "$d"
+			echo "Silindi (eski prev): $d"
+		done
+		# Keep only this backup + at most one previous bak
+		ls -1dt /opt/zapret.bak.* 2>/dev/null | tail -n +3 | while read -r d; do
+			rm -rf "$d"
+			echo "Silindi (eski bak): $d"
+		done
+	else
+		mv "$ZAPRET_OPT" "/opt/zapret.prev.$TS"
+		echo "Eski kurulum tasindi: /opt/zapret.prev.$TS"
+	fi
 fi
 
-echo "Kopyalaniyor: motor -> /opt/zapret"
+echo "Kopyalaniyor: motor -> /opt/zapret (temiz kurulum)"
 mkdir -p "$ZAPRET_OPT"
 if command -v rsync >/dev/null 2>&1; then
 	rsync -a --exclude '.git' --exclude '.github' "$ZAPRET_UPSTREAM/" "$ZAPRET_OPT/"
 else
-	cp -R "$ZAPRET_UPSTREAM" "$ZAPRET_OPT"
+	cp -R "$ZAPRET_UPSTREAM/." "$ZAPRET_OPT/"
 	rm -rf "$ZAPRET_OPT/.git" "$ZAPRET_OPT/.github" 2>/dev/null || true
 fi
 
@@ -126,29 +172,36 @@ fi
 if [ ! -x "$ZAPRET_OPT/init.d/macos/zapret" ]; then
 	echo "HATA: /opt/zapret/init.d/macos/zapret yok."
 	echo "Paket bozuk olabilir (init.d kopyalanmamis). Yeni DMG ile tekrar kurun."
-	echo "Kaynak kontrol: $ZAPRET_UPSTREAM/init.d/macos/"
-	ls -la "$ZAPRET_UPSTREAM/init.d/macos" 2>/dev/null || true
-	ls -la "$ZAPRET_OPT/init.d" 2>/dev/null || true
+	if [ -n "$BACKUP_DIR" ] && [ -d "$BACKUP_DIR" ]; then
+		echo "Geri yukleniyor: $BACKUP_DIR"
+		rm -rf "$ZAPRET_OPT"
+		mv "$BACKUP_DIR" "$ZAPRET_OPT"
+	fi
 	exit 1
 fi
 chmod 755 "$ZAPRET_OPT/init.d/macos/zapret" 2>/dev/null || true
-# Fix executable bits on scripts after rsync/cp
 find "$ZAPRET_OPT/init.d" -type f \( -name 'zapret' -o -name '*.sh' \) -exec chmod 755 {} \; 2>/dev/null || true
 find "$ZAPRET_OPT/ipset" -type f -name '*.sh' -exec chmod 755 {} \; 2>/dev/null || true
 find "$ZAPRET_OPT/tpws" -type f -name 'tpws' -exec chmod 755 {} \; 2>/dev/null || true
 find "$ZAPRET_OPT/binaries" -type f -exec chmod 755 {} \; 2>/dev/null || true
 
-# 4) Config + hostlist + custom.d
+# 4) Config + hostlist + custom.d (preserve user hostlist)
 cp "$CONFIG_SRC" "$ZAPRET_OPT/config"
 cp "$CONFIG_SRC" "$ZAPRET_OPT/config.default.macos" 2>/dev/null || true
 mkdir -p "$ZAPRET_OPT/ipset" "$ZAPRET_OPT/tmp"
-cp "$HOSTLIST_SRC" "$ZAPRET_OPT/ipset/zapret-hosts-user.txt"
+
+if [ -n "$USER_HOSTLIST_SAVED" ] && [ -f "$USER_HOSTLIST_SAVED" ]; then
+	cp "$USER_HOSTLIST_SAVED" "$ZAPRET_OPT/ipset/zapret-hosts-user.txt"
+	cp "$USER_HOSTLIST_SAVED" "$SUPPORT_DIR/config/zapret-hosts-user.txt"
+	rm -f "$USER_HOSTLIST_SAVED"
+	echo "Kullanici hostlist geri yuklendi."
+else
+	cp "$HOSTLIST_SRC" "$ZAPRET_OPT/ipset/zapret-hosts-user.txt"
+	cp "$HOSTLIST_SRC" "$SUPPORT_DIR/config/zapret-hosts-user.txt"
+fi
 touch "$ZAPRET_OPT/ipset/zapret-hosts-user-exclude.txt"
 touch "$ZAPRET_OPT/ipset/zapret-ip-exclude.txt"
-
-# Persist editable copies under Application Support
 cp "$CONFIG_SRC" "$SUPPORT_DIR/config/config.macos-hostlist"
-cp "$HOSTLIST_SRC" "$SUPPORT_DIR/config/zapret-hosts-user.txt"
 
 if [ -d "$ZAPRET_HOME/config/custom.d" ]; then
 	mkdir -p "$ZAPRET_OPT/init.d/macos/custom.d" "$SUPPORT_DIR/config/custom.d"
@@ -157,12 +210,13 @@ if [ -d "$ZAPRET_HOME/config/custom.d" ]; then
 	chmod 644 "$ZAPRET_OPT/init.d/macos/custom.d"/* 2>/dev/null || true
 fi
 
-# 5) local-tools (portable scripts + KeepAlive tpws)
+# 5) local-tools (portable scripts + KeepAlive + self-update)
 mkdir -p "$LOCAL_TOOLS"
 for f in lib.sh zapret-ctl zapret-start.sh zapret-stop.sh zapret-status.sh \
 	zapret-update-lists.sh zapret-update-engine.sh zapret-rollback-engine.sh \
 	fix-dns-turkey.sh zapret-uninstall.sh verify.sh \
-	zapret-tpws-run.sh zapret-boot.sh; do
+	zapret-tpws-run.sh zapret-boot.sh \
+	zapret-self-update.sh zapret-check-update.sh; do
 	if [ -f "$SCRIPTS_DIR/$f" ]; then
 		cp "$SCRIPTS_DIR/$f" "$LOCAL_TOOLS/$f"
 	fi
@@ -295,18 +349,32 @@ else
 fi
 
 # 11) DNS fix for Turkey (Discord poison via router DNS)
-echo "DNS duzeltiliyor (Discord icin)..."
-if [ -x "$LOCAL_TOOLS/fix-dns-turkey.sh" ]; then
-	# Run as console user so networksetup applies to their Wi-Fi
-	if [ -n "$USER_NAME" ] && [ "$USER_NAME" != "root" ]; then
-		sudo -u "$USER_NAME" "$LOCAL_TOOLS/fix-dns-turkey.sh" 2>/dev/null || "$LOCAL_TOOLS/fix-dns-turkey.sh" || true
-	else
-		"$LOCAL_TOOLS/fix-dns-turkey.sh" || true
+# Skip during silent self-update unless ZAPRET_FIX_DNS=1
+if [ "${ZAPRET_FIX_DNS:-1}" = "1" ]; then
+	echo "DNS duzeltiliyor (Discord icin)..."
+	if [ -x "$LOCAL_TOOLS/fix-dns-turkey.sh" ]; then
+		if [ -n "$USER_NAME" ] && [ "$USER_NAME" != "root" ]; then
+			sudo -u "$USER_NAME" "$LOCAL_TOOLS/fix-dns-turkey.sh" 2>/dev/null || "$LOCAL_TOOLS/fix-dns-turkey.sh" || true
+		else
+			"$LOCAL_TOOLS/fix-dns-turkey.sh" || true
+		fi
 	fi
+fi
+
+# 12) Write installed version + success marker
+printf '%s\n' "$ZAPRET_VERSION" > "$SUPPORT_DIR/version"
+chmod 644 "$SUPPORT_DIR/version"
+# On success with clean reinstall, drop older backups beyond the newest one
+if [ "$ZAPRET_CLEAN_REINSTALL" = "1" ] && [ -n "$BACKUP_DIR" ] && [ -d "$BACKUP_DIR" ]; then
+	# Keep the one we just made; remove older baks beyond 1 previous
+	ls -1dt /opt/zapret.bak.* 2>/dev/null | tail -n +3 | while read -r d; do
+		rm -rf "$d"
+	done
 fi
 
 echo ""
 echo "=== Kurulum tamam ==="
+echo "  Surum:      $ZAPRET_VERSION"
 echo "  Motor:      $ZAPRET_OPT"
 echo "  Scriptler:  $LOCAL_TOOLS"
 echo "  Destek:     $SUPPORT_DIR"
@@ -315,12 +383,15 @@ echo "  Hostlist:   $ZAPRET_OPT/ipset/zapret-hosts-user.txt"
 echo "  ctl:        $CTL_PATH"
 echo "  sudoers:    $SUDOERS_FILE ($USER_NAME)"
 echo "  PF yedek:   $SUPPORT_DIR/backups/"
-echo ""
 echo "  desired:    $SUPPORT_DIR/desired-state"
 echo "  KeepAlive:  /Library/LaunchDaemons/zapret-tpws.plist"
 echo "  boot:       /Library/LaunchDaemons/zapret-boot.plist"
+if [ -n "$BACKUP_DIR" ]; then
+	echo "  Yedek:      $BACKUP_DIR"
+fi
 echo ""
 echo "Test: sudo $CTL_PATH status"
-echo "      sudo $CTL_PATH start|stop"
-echo "      sudo kill \$(pgrep -x tpws); sleep 3; sudo $CTL_PATH status  # aninda restart"
+echo "      sudo $CTL_PATH check-update"
+echo "      sudo $CTL_PATH self-update"
+echo "INSTALL_OK"
 exit 0

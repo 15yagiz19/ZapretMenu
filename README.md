@@ -4,17 +4,28 @@ Bu klasör, **resmi** [bol-van/zapret](https://github.com/bol-van/zapret) motoru
 
 > Zapret VPN değildir. Trafiğini şifrelemez. Sadece bazı engelli sitelerin DPI engelini aşmaya çalışır.
 
-## Arkadaşa göndermek (DMG)
-
-Tek dosya paket:
+## Arkadaşa göndermek (DMG) / Release
 
 ```bash
 ./scripts/package-dmg.sh
 ```
 
-Çıktı: `dist/Zapret-macOS.dmg` (ve `dist/Zapret-macOS-v1.0.0.dmg`)
+Çıktı:
 
-Alıcı: DMG aç → **Zapret Kurulum** çift tık → Mac şifresi → menüde **Z**.
+| Dosya | Ne işe yarar |
+|-------|----------------|
+| `dist/Zapret-macOS.dmg` | İlk kurulum (çift tık) |
+| `dist/ZapretMenu-update.tar.gz` | Menü **self-update** (GitHub asset) |
+| `dist/SHA256SUMS` | Self-update doğrulama (zorunlu) |
+
+```bash
+gh release create v1.1.0 \
+  dist/Zapret-macOS.dmg \
+  dist/ZapretMenu-update.tar.gz \
+  dist/SHA256SUMS
+```
+
+Alıcı (ilk kurulum): DMG aç → **Zapret Kurulum** → şifre → menüde **Z**.
 
 ## Geliştirici / bu makine (kaynak ağaçtan)
 
@@ -52,9 +63,27 @@ Kurulum sonrası taşınabilir yollar:
 | **Durumu yenile** | Durumu tekrar okur |
 | **Listeleri güncelle** | Domain listesini tazeler (hızlı) |
 | **DNS düzelt (Wi‑Fi)** | Wi‑Fi DNS → 1.1.1.1 / 1.0.0.1 / 8.8.8.8 |
-| **Motoru güncelle…** | Yazılımı günceller (onay + yedek + test) |
-| **Son motora geri dön** | Son yedeğe döner |
+| **Güncellemeleri kontrol et** | GitHub Releases son sürüm |
+| **Uygulamayı güncelle…** | Paketi indirir; eskiyi siler, yenisini kurar (hostlist korunur) |
+| **Motoru güncelle (bol-van)…** | Sadece bol-van motor kaynağı (ikincil) |
+| **Son motora geri dön** | Son motor yedeğine döner |
 | **Çıkış** | Sadece menü uygulamasını kapatır (motor açık kalabilir) |
+
+### Güncelleme (kullanıcı)
+
+Sen GitHub’a yeni release attıktan sonra kullanıcı:
+
+1. Menü → **Güncellemeleri kontrol et** veya otomatik uyarı  
+2. **Uygulamayı güncelle…** → Onay  
+
+veya Terminal:
+
+```bash
+sudo zapret-ctl check-update
+sudo zapret-ctl self-update
+```
+
+Üzerine kurulum **temiz replace**: eski `/opt/zapret` yedeklenir, yenisi kurulur; hostlist Application Support’ta korunur.
 
 - **Z●** = açık · **Z○** = kapalı  
 - Her tıklamada şifre **sormaması** için `system-install.sh` içindeki dar `sudoers` kuralı gerekir (hedef kullanıcıya özel).

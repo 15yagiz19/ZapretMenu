@@ -1,6 +1,7 @@
 #!/bin/sh
 # Whitelist-only control wrapper for menubar + CLI
-# Allowed: start|stop|restart|status|update-lists|update-engine|rollback-engine|fix-dns
+# Allowed: start|stop|restart|status|update-lists|update-engine|rollback-engine|
+#          fix-dns|check-update|self-update
 #
 # Portable: /usr/local/bin/zapret-ctl → /opt/zapret/local-tools;
 # when run from a checkout scripts/ dir, uses that dir.
@@ -19,7 +20,7 @@ fi
 CMD="${1:-}"
 
 usage() {
-	echo "Kullanim: zapret-ctl {start|stop|restart|status|update-lists|update-engine|rollback-engine|fix-dns}" >&2
+	echo "Kullanim: zapret-ctl {start|stop|restart|status|update-lists|update-engine|rollback-engine|fix-dns|check-update|self-update}" >&2
 	exit 2
 }
 
@@ -56,6 +57,12 @@ case "$CMD" in
 		;;
 	fix-dns)
 		exec "$SCRIPTS_DIR/fix-dns-turkey.sh"
+		;;
+	check-update)
+		exec "$SCRIPTS_DIR/zapret-check-update.sh"
+		;;
+	self-update)
+		exec "$SCRIPTS_DIR/zapret-self-update.sh"
 		;;
 	*)
 		echo "HATA: bilinmeyen komut: $CMD" >&2

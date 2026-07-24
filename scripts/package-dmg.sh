@@ -6,7 +6,7 @@ set -e
 ROOT="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-VERSION="${VERSION:-1.0.7}"
+VERSION="${VERSION:-1.1.0}"
 ARCH_NOTE="universal (arm64+x86_64)"
 DIST_DIR="$ROOT/dist"
 STAGE="$DIST_DIR/stage"
@@ -14,6 +14,8 @@ PAYLOAD="$STAGE/payload"
 DMG_NAME="Zapret-macOS"
 DMG_PATH="$DIST_DIR/${DMG_NAME}.dmg"
 DMG_VERSIONED="$DIST_DIR/${DMG_NAME}-v${VERSION}.dmg"
+UPDATE_TGZ="$DIST_DIR/ZapretMenu-update.tar.gz"
+SHA256SUMS="$DIST_DIR/SHA256SUMS"
 VOL_NAME="Zapret Kurulum"
 
 echo "=== Zapret DMG paketleme ==="
@@ -45,11 +47,16 @@ for f in lib.sh zapret-ctl system-install.sh install-menubar.sh \
 	zapret-update-lists.sh zapret-update-engine.sh zapret-rollback-engine.sh \
 	fix-dns-turkey.sh zapret-uninstall.sh verify.sh \
 	zapret-tpws-run.sh zapret-boot.sh \
+	zapret-self-update.sh zapret-check-update.sh \
 	zapret-tpws.plist zapret-boot.plist; do
 	cp "$ROOT/scripts/$f" "$PAYLOAD/scripts/$f"
 done
 chmod 755 "$PAYLOAD/scripts"/*.sh "$PAYLOAD/scripts"/zapret-ctl 2>/dev/null || true
 chmod 644 "$PAYLOAD/scripts"/*.plist 2>/dev/null || true
+
+# Package version for install + self-update
+printf '%s\n' "$VERSION" > "$PAYLOAD/VERSION"
+printf '%s\n' "$VERSION" > "$ROOT/VERSION" 2>/dev/null || true
 
 # Config
 cp "$ROOT/config/config.macos-hostlist" "$PAYLOAD/config/"
@@ -114,6 +121,10 @@ export ZAPRET_HOME="$PAYLOAD"
 export ZAPRET_UPSTREAM="$PAYLOAD/bundled"
 export CONFIG_SRC="$PAYLOAD/config/config.macos-hostlist"
 export HOSTLIST_SRC="$PAYLOAD/config/zapret-hosts-user.txt"
+export ZAPRET_CLEAN_REINSTALL=1
+if [ -f "$PAYLOAD/VERSION" ]; then
+	export ZAPRET_VERSION="$(tr -d ' \t\r\n' < "$PAYLOAD/VERSION")"
+fi
 
 # Resolve console user for sudoers (installer may run as root without SUDO_USER)
 if [ -z "$SUDO_USER" ] || [ "$SUDO_USER" = "root" ]; then
@@ -427,6 +438,22 @@ cp -R "$ROOT/menubar/ZapretToggle.app" "$STAGE/ZapretToggle.app" 2>/dev/null || 
 # Clear quarantine on stage
 xattr -dr com.apple.quarantine "$STAGE" 2>/dev/null || true
 
+# --- Headless update tarball for GitHub self-update ---
+echo "Self-update tar.gz olusturuluyor..."
+rm -f "$UPDATE_TGZ"
+# payload + install-as-root at top level of archive as "payload/"
+(
+	cd "$STAGE"
+	tar -czf "$UPDATE_TGZ" payload
+)
+# SHA256SUMS for release assets
+(
+	cd "$DIST_DIR"
+	rm -f SHA256SUMS
+	# DMG written next; compute after both files exist
+	:
+)
+
 # --- Create DMG ---
 echo "DMG olusturuluyor..."
 rm -f "$DMG_PATH" "$DMG_VERSIONED"
@@ -440,15 +467,26 @@ hdiutil create \
 
 cp -f "$DMG_PATH" "$DMG_VERSIONED"
 
+# SHA256SUMS (required by self-update)
+(
+	cd "$DIST_DIR"
+	rm -f SHA256SUMS
+	shasum -a 256 "$(basename "$DMG_PATH")" "$(basename "$DMG_VERSIONED")" "$(basename "$UPDATE_TGZ")" > SHA256SUMS
+)
+
 # Size report
-ls -lh "$DMG_PATH" "$DMG_VERSIONED"
+ls -lh "$DMG_PATH" "$DMG_VERSIONED" "$UPDATE_TGZ" "$SHA256SUMS"
 file "$DMG_PATH"
 
 echo ""
 echo "=== Hazir ==="
 echo "  $DMG_PATH"
 echo "  $DMG_VERSIONED"
+echo "  $UPDATE_TGZ"
+echo "  $SHA256SUMS"
 echo "  Mimari: $ARCH_NOTE (tpws + menubar)"
+echo "  Surum: $VERSION"
 echo ""
-echo "Gonderim: $DMG_PATH dosyasini arkadasina gonder."
-echo "Alıcı: DMG ac > Zapret Kurulum cift tik > sifre gir."
+echo "Release:"
+echo "  gh release create v${VERSION} dist/Zapret-macOS.dmg dist/ZapretMenu-update.tar.gz dist/SHA256SUMS"
+echo "Alıcı: DMG ac > Zapret Kurulum | veya menüden Uygulamayi guncelle"
