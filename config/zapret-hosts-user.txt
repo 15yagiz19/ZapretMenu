@@ -1,8 +1,8 @@
-# Turkey practical hostlist for zapret (hostlist mode)
-# One domain per line. Subdomains are included automatically.
-# DO NOT add Tailscale / MagicDNS / VDS domains here.
+# Zapret hostlist (hostlist mode) — genis engelli / kisitli site listesi
+# One domain per line. Subdomains usually match automatically.
+# DO NOT add Tailscale / MagicDNS / VDS / local domains here.
 
-# Discord
+# --- Discord (app + web + updater) ---
 discord.com
 discord.gg
 discord.media
@@ -15,8 +15,19 @@ cdn.discordapp.com
 media.discordapp.net
 images-ext-1.discordapp.net
 images-ext-2.discordapp.net
+updates.discord.com
+dl.discordapp.net
+dl2.discordapp.net
+stable.dl.discordapp.net
+stable.dl2.discordapp.net
+download.discordapp.net
+download.discordapp.com
+status.discord.com
+canary.discord.com
+ptb.discord.com
+discord-attachments-uploads-prd.storage.googleapis.com
 
-# YouTube / Google video
+# --- YouTube / Google video ---
 youtube.com
 youtu.be
 ytimg.com
@@ -27,8 +38,11 @@ yt3.ggpht.com
 jnn-pa.googleapis.com
 youtubei.googleapis.com
 yt.be
+googleapis.com
+gstatic.com
+googleusercontent.com
 
-# Instagram / Meta
+# --- Instagram / Meta / Facebook / WhatsApp ---
 instagram.com
 cdninstagram.com
 fbcdn.net
@@ -37,8 +51,11 @@ facebook.net
 fb.com
 meta.com
 messenger.com
+whatsapp.com
+whatsapp.net
+wa.me
 
-# Twitter / X
+# --- Twitter / X ---
 twitter.com
 x.com
 t.co
@@ -46,53 +63,228 @@ twimg.com
 pscp.tv
 periscope.tv
 tweetdeck.com
+abs.twimg.com
+pbs.twimg.com
+video.twimg.com
 
-# Reddit
+# --- Reddit ---
 reddit.com
 redd.it
 redditmedia.com
 redditstatic.com
-redd.it
+reddituploads.com
+redditmap.live
 
-# TikTok
+# --- TikTok ---
 tiktok.com
 tiktokv.com
 tiktokcdn.com
 musical.ly
 byteoversea.com
 ibyteimg.com
+tiktokcdn-us.com
 
-# Telegram (web / CDN — not Tailscale)
+# --- Telegram ---
 telegram.org
 t.me
 telegra.ph
 telegram.me
 telesco.pe
+telegram.dog
+core.telegram.org
 
-# Medium / news often blocked
-medium.com
-nytimes.com
-bbc.com
-bbc.co.uk
-theguardian.com
+# --- Adult (TR'de sik engellenen) ---
+pornhub.com
+pornhub.org
+pornhubpremium.com
+phncdn.com
+pornhub-cdn.com
+ei.phncdn.com
+cv.phncdn.com
+di.phncdn.com
+xvideos.com
+xvideos-cdn.com
+xnxx.com
+xnxx-cdn.com
+xhamster.com
+xhcdn.com
+xhamsterlive.com
+redtube.com
+youporn.com
+tube8.com
+spankbang.com
+sb-cd.com
+eporner.com
+hqporner.com
+spankwire.com
+xtube.com
+beeg.com
+tnaflix.com
+drtuber.com
+nuvid.com
+sunporno.com
+porn.com
+sex.com
+chaturbate.com
+stripchat.com
+bongacams.com
+livejasmin.com
+camsoda.com
+onlyfans.com
+fansly.com
+manyvids.com
+clips4sale.com
+porntrex.com
+hqcollect.me
+thisvid.com
+motherless.com
+imagefap.com
+pornpics.com
+sexvid.xxx
+sxyprn.com
+dood.ws
+doodstream.com
+streamtape.com
+mixdrop.co
+ok.ru
 
-# Spotify (sometimes restricted)
-spotify.com
-scdn.co
-spoti.fi
-
-# Twitch
+# --- Streaming / video ---
 twitch.tv
 ttvnw.net
 jtvnw.net
 twitchcdn.net
-
-# SoundCloud
+vimeo.com
+vimeocdn.com
+dailymotion.com
+dmcdn.net
+netflix.com
+nflxvideo.net
+nflximg.net
+nflxext.com
+nflxso.net
+spotify.com
+scdn.co
+spoti.fi
 soundcloud.com
 sndcdn.com
+deezer.com
+dzcdn.net
+apple.com
+mzstatic.com
+itunes.apple.com
+primevideo.com
+aiv-cdn.net
+hbomax.com
+max.com
+disneyplus.com
+bamgrid.com
+crunchyroll.com
+vrv.co
 
-# GitHub — required for Vencord on Discord.app (updater/loader hits API + release CDN)
-# Without these, vanilla Discord may work while Vencord-patched app fails on some Wi-Fi.
+# --- News / media ---
+medium.com
+nytimes.com
+bbc.com
+bbc.co.uk
+bbci.co.uk
+theguardian.com
+reuters.com
+cnn.com
+washingtonpost.com
+wsj.com
+bloomberg.com
+ft.com
+economist.com
+aljazeera.com
+dw.com
+rferl.org
+voanews.com
+sputniknews.com
+rt.com
+independent.co.uk
+huffpost.com
+vice.com
+buzzfeed.com
+artstation.com
+behance.net
+
+# --- Wiki / reference ---
+wikipedia.org
+wikimedia.org
+wikidata.org
+mediawiki.org
+archive.org
+archive.is
+archive.ph
+archive.today
+web.archive.org
+wikihow.com
+quora.com
+stackoverflow.com
+stackexchange.com
+superuser.com
+serverfault.com
+
+# --- AI / tools (bazi aglarda kisit) ---
+openai.com
+chatgpt.com
+chat.openai.com
+oaistatic.com
+oaiusercontent.com
+anthropic.com
+claude.ai
+gemini.google.com
+bard.google.com
+perplexity.ai
+midjourney.com
+stability.ai
+huggingface.co
+cohere.com
+groq.com
+deepseek.com
+character.ai
+poe.com
+you.com
+phind.com
+
+# --- Social / chat misc ---
+linkedin.com
+licdn.com
+snapchat.com
+sc-cdn.net
+pinterest.com
+pinimg.com
+tumblr.com
+truthsocial.com
+mastodon.social
+bluesky.social
+bsky.app
+bsky.social
+threads.net
+
+# --- Gaming / stores ---
+steamcommunity.com
+steampowered.com
+steamstatic.com
+steam-chat.com
+epicgames.com
+unrealengine.com
+store.epicgames.com
+xbox.com
+xboxlive.com
+playstation.com
+nintendo.com
+roblox.com
+rbxcdn.com
+ea.com
+origin.com
+ubisoft.com
+battle.net
+blizzard.com
+riotgames.com
+leagueoflegends.com
+
+# --- Cloud / CDN / dev (engelli sitelerin altyapisi) ---
 github.com
 api.github.com
 githubusercontent.com
@@ -102,12 +294,63 @@ release-assets.githubusercontent.com
 camo.githubusercontent.com
 githubassets.com
 github.io
+gitlab.com
+bitbucket.org
+npmjs.com
+npmjs.org
+pypi.org
+docker.com
+docker.io
+cloudflare.com
+cloudflareinsights.com
+cloudfront.net
+akamaihd.net
+akamaized.net
+fastly.net
+edgecastcdn.net
+google.com
+gvt1.com
+gvt2.com
+youtube-nocookie.com
 
-# Vencord official sites (installer / docs — Discord.app patch stays on Discord.app)
+# --- Vencord (Discord.app patch; ayri client degil) ---
 vencord.dev
 vencord.cc
 
-# Cloudflare pages / common CDNs used by blocked sites
-# (kept minimal — hostlist mode only fools matching hosts)
-cloudflare.com
-cloudflareinsights.com
+# --- Torrent / P2P related web (sadece web domain; P2P protokolu degil) ---
+thepiratebay.org
+piratebay.org
+1337x.to
+rarbg.to
+nyaa.si
+torrentgalaxy.to
+limetorrents.lol
+yts.mx
+eztv.re
+
+# --- Misc often restricted ---
+pastebin.com
+hastebin.com
+ghostbin.com
+imgur.com
+i.imgur.com
+giphy.com
+tenor.com
+dropbox.com
+mega.nz
+mediafire.com
+pixeldrain.com
+gofile.io
+anonfiles.com
+bayfiles.com
+krakenfiles.com
+sendspace.com
+wetransfer.com
+proton.me
+protonmail.com
+tutanota.com
+signal.org
+torproject.org
+eff.org
+amnesty.org
+hrw.org
