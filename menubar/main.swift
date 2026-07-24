@@ -25,6 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var netProbeItem: NSMenuItem!
     private var netApplyItem: NSMenuItem!
     private var discordDiagItem: NSMenuItem!
+    private var modeMenuItem: NSMenuItem!
     private var checkUpdateItem: NSMenuItem!
     private var selfUpdateItem: NSMenuItem!
     private var engineItem: NSMenuItem!
@@ -89,6 +90,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(NSMenuItem.separator())
 
+        let modeMenu = NSMenu()
+        let mHost = NSMenuItem(title: "Sadece liste (hostlist)", action: #selector(setModeHostlist), keyEquivalent: "")
+        mHost.target = self
+        modeMenu.addItem(mHost)
+        let mAuto = NSMenuItem(title: "Otomatik öğren (autohostlist)", action: #selector(setModeAuto), keyEquivalent: "")
+        mAuto.target = self
+        modeMenu.addItem(mAuto)
+        let mAll = NSMenuItem(title: "Tüm HTTPS (agresif)", action: #selector(setModeAll), keyEquivalent: "")
+        mAll.target = self
+        modeMenu.addItem(mAll)
+        modeMenuItem = NSMenuItem(title: "Filtre modu", action: nil, keyEquivalent: "")
+        modeMenuItem.submenu = modeMenu
+        menu.addItem(modeMenuItem)
+
+        menu.addItem(NSMenuItem.separator())
+
         checkUpdateItem = NSMenuItem(title: "Güncellemeleri kontrol et", action: #selector(checkUpdate), keyEquivalent: "")
         checkUpdateItem.target = self
         menu.addItem(checkUpdateItem)
@@ -143,6 +160,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         runCtl("update-lists", busyTitle: "Listeler güncelleniyor…")
     }
 
+
+
+    @objc private func setModeHostlist() {
+        runCtl("set-mode-hostlist", busyTitle: "Mod: hostlist…", longRunning: true)
+    }
+    @objc private func setModeAuto() {
+        runCtl("set-mode-auto", busyTitle: "Mod: autohostlist…", longRunning: true)
+    }
+    @objc private func setModeAll() {
+        let alert = NSAlert()
+        alert.messageText = "Tüm HTTPS modu?"
+        alert.informativeText = "Neredeyse tüm 80/443 trafiğine desync uygulanır. Banka/Apple gibi siteler bozulabilir. Devam?"
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Aç")
+        alert.addButton(withTitle: "İptal")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        runCtl("set-mode-all", busyTitle: "Mod: tüm HTTPS…", longRunning: true)
+    }
 
     @objc private func netProbe() {
         let alert = NSAlert()
@@ -479,6 +514,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             title = "Durum: Kapalı"
             statusItem.button?.title = "Z○"
             statusItem.button?.toolTip = "Zapret: Kapalı"
+        }
+        if detail.contains("MODE_FILTER=autohostlist") {
+            title += " · auto"
+        } else if detail.contains("MODE_FILTER=none") {
+            title += " · tümü"
+        } else if detail.contains("MODE_FILTER=hostlist") {
+            title += " · liste"
         }
         if let v = updateAvailable {
             title += " · Güncelleme: v\(v)"

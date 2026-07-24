@@ -200,6 +200,7 @@ else
 	cp "$HOSTLIST_SRC" "$SUPPORT_DIR/config/zapret-hosts-user.txt"
 fi
 touch "$ZAPRET_OPT/ipset/zapret-hosts-user-exclude.txt"
+touch "$ZAPRET_OPT/ipset/zapret-hosts-auto.txt"
 touch "$ZAPRET_OPT/ipset/zapret-ip-exclude.txt"
 cp "$CONFIG_SRC" "$SUPPORT_DIR/config/config.macos-hostlist"
 
@@ -219,7 +220,7 @@ for f in lib.sh zapret-ctl zapret-start.sh zapret-stop.sh zapret-status.sh \
 	zapret-self-update.sh zapret-check-update.sh \
 	zapret-profile-lib.sh zapret-net-id.sh zapret-net-status.sh \
 	zapret-apply-profile.sh zapret-probe-network.sh zapret-netwatch.sh \
-	zapret-discord-diag.sh; do
+	zapret-discord-diag.sh zapret-set-mode.sh; do
 	if [ -f "$SCRIPTS_DIR/$f" ]; then
 		cp "$SCRIPTS_DIR/$f" "$LOCAL_TOOLS/$f"
 	fi

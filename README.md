@@ -158,6 +158,25 @@ sudo zapret-ctl net-probe   # Zapret açıkken
 4. Vesktop veya başka client **gerekmez**
 
 
+
+## Filtre modu (hostlist / auto / tümü)
+
+| Mod | Komut | Ne yapar |
+|-----|--------|----------|
+| **hostlist** | `sudo zapret-ctl set-mode-hostlist` | Sadece listedeki domainler |
+| **autohostlist** (varsayılan v1.2.2+) | `sudo zapret-ctl set-mode-auto` | Liste + engeli otomatik öğrenir (`zapret-hosts-auto.txt`) |
+| **none** | `sudo zapret-ctl set-mode-all` | Neredeyse tüm HTTPS (agresif) |
+
+Menü: **Filtre modu** alt menüsü.
+
+Roblox ve geniş engelli siteler `config/zapret-hosts-user.txt` içinde; autohostlist yeni engelleri de ekler.
+
+```bash
+sudo zapret-ctl set-mode-auto
+sudo zapret-ctl update-lists
+sudo zapret-ctl start
+```
+
 ## Bozulursa ne yapmalı?
 
 1. Menüden **Kapat**  

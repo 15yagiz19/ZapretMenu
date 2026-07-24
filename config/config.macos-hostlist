@@ -9,10 +9,11 @@ SET_MAXELEM=522288
 IPSET_OPT="hashsize 262144 maxelem $SET_MAXELEM"
 IP2NET_OPT4="--prefix-length=22-30 --v4-threshold=3/4"
 IP2NET_OPT6="--prefix-length=56-64 --v6-threshold=5"
+# autohostlist: auto-detect blocked hosts and append to zapret-hosts-auto.txt
 AUTOHOSTLIST_RETRANS_THRESHOLD=3
 AUTOHOSTLIST_FAIL_THRESHOLD=3
 AUTOHOSTLIST_FAIL_TIME=60
-AUTOHOSTLIST_DEBUGLOG=0
+AUTOHOSTLIST_DEBUGLOG=1
 MDIG_THREADS=30
 
 # gzip lists are incompatible with PF on macOS
@@ -54,8 +55,10 @@ NFQWS_OPT="
 --filter-udp=443 --dpi-desync=fake --dpi-desync-repeats=6 <HOSTLIST_NOAUTO>
 "
 
-# hostlist only — never catch-all
-MODE_FILTER=hostlist
+# hostlist = only user list
+# autohostlist = user list + auto-learned blocked domains (recommended middle ground)
+# none = almost all TCP 80/443 (aggressive, more side effects)
+MODE_FILTER=autohostlist
 
 FLOWOFFLOAD=donttouch
 
@@ -71,5 +74,5 @@ DISABLE_IPV6=1
 
 FILTER_TTL_EXPIRED_ICMP=1
 
-# Only use user hostlist (no remote reestr download by default)
+# User hostlist seed + autohostlist learns more automatically
 GETLIST=get_user.sh
