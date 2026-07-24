@@ -37,6 +37,18 @@ quic=$(read_profile_field "$ppath" quic_block)
 
 plog "apply profile=$pid strategy=$strat dns=$dnsmode quic=$quic"
 
+# Vencord needs GitHub domains in hostlist always
+ensure_github_hostlist_entries
+
+# If profile notes mention github_blocked, force public DNS even if mode was router
+notes=$(read_profile_field "$ppath" notes)
+case "$notes" in
+	*github_blocked*|*github_dns_poison*)
+		dnsmode=public
+		plog "notes force public DNS (github)"
+		;;
+esac
+
 case "$dnsmode" in
 	router) apply_dns_router ;;
 	*) apply_dns_public ;;
@@ -48,5 +60,7 @@ restart_tpws_keepalive
 save_last_net "$pid"
 
 ssid=$(read_profile_field "$ppath" ssid)
-echo "APPLIED $pid strategy=$strat dns=$dnsmode ssid=$ssid"
+gh=no
+if github_ok; then gh=yes; fi
+echo "APPLIED $pid strategy=$strat dns=$dnsmode ssid=$ssid github=$gh"
 exit 0

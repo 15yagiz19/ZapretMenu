@@ -14,7 +14,7 @@ fi
 CMD="${1:-}"
 
 usage() {
-	echo "Kullanim: zapret-ctl {start|stop|restart|status|update-lists|update-engine|rollback-engine|fix-dns|check-update|self-update|net-status|net-probe|net-apply}" >&2
+	echo "Kullanim: zapret-ctl {start|stop|restart|status|update-lists|update-engine|rollback-engine|fix-dns|check-update|self-update|net-status|net-probe|net-apply|discord-diag}" >&2
 	exit 2
 }
 
@@ -38,6 +38,7 @@ case "$CMD" in
 	net-status) exec "$SCRIPTS_DIR/zapret-net-status.sh" ;;
 	net-probe) exec "$SCRIPTS_DIR/zapret-probe-network.sh" ;;
 	net-apply) exec "$SCRIPTS_DIR/zapret-apply-profile.sh" ;;
+	discord-diag) exec "$SCRIPTS_DIR/zapret-discord-diag.sh" ;;
 	*)
 		echo "HATA: bilinmeyen komut: $CMD" >&2
 		usage

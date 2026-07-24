@@ -24,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var netStatusItem: NSMenuItem!
     private var netProbeItem: NSMenuItem!
     private var netApplyItem: NSMenuItem!
+    private var discordDiagItem: NSMenuItem!
     private var checkUpdateItem: NSMenuItem!
     private var selfUpdateItem: NSMenuItem!
     private var engineItem: NSMenuItem!
@@ -81,6 +82,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         netApplyItem = NSMenuItem(title: "Bu ağ profilini uygula", action: #selector(netApply), keyEquivalent: "")
         netApplyItem.target = self
         menu.addItem(netApplyItem)
+
+        discordDiagItem = NSMenuItem(title: "Discord/Vencord teşhis…", action: #selector(discordDiag), keyEquivalent: "")
+        discordDiagItem.target = self
+        menu.addItem(discordDiagItem)
 
         menu.addItem(NSMenuItem.separator())
 
@@ -151,6 +156,59 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.addButton(withTitle: "İptal")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         runCtl("net-probe", busyTitle: "Ağ ayarlanıyor…", longRunning: true)
+    }
+
+
+    @objc private func discordDiag() {
+        guard !isBusy else { return }
+        setBusy(true, title: "Discord teşhis…")
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let result = self?.runProcess(args: ["discord-diag"], useSudo: true)
+                ?? self?.runProcess(args: ["discord-diag"], useSudo: false)
+                ?? (1, "ctl yok")
+            DispatchQueue.main.async {
+                self?.setBusy(false, title: nil)
+                let out = result.1
+                let alert = NSAlert()
+                alert.messageText = "Discord.app + Vencord teşhis"
+                var hint = ""
+                var cause = ""
+                for line in out.split(separator: "\n").map(String.init) {
+                    if line.hasPrefix("ROOT_CAUSE=") { cause = String(line.dropFirst(11)) }
+                    if line.hasPrefix("HINT=") { hint = String(line.dropFirst(5)) }
+                }
+                var body = ""
+                if !cause.isEmpty { body += "Sonuç: \(cause)\n\n" }
+                if !hint.isEmpty { body += "\(hint)\n\n" }
+                body += "Ayrı client (Vesktop vb.) gerekmez — resmi Discord.app + Vencord.\n\n"
+                body += String(out.suffix(900))
+                alert.informativeText = body
+                alert.alertStyle = .informational
+                alert.addButton(withTitle: "Tamam")
+                if cause.contains("VENCORD") || cause.contains("OK_OR_UNKNOWN") {
+                    alert.addButton(withTitle: "Vencord Repair sayfası")
+                }
+                if cause.contains("GITHUB") {
+                    alert.addButton(withTitle: "Bu ağı yeniden ayarla")
+                }
+                let r = alert.runModal()
+                if r == .alertSecondButtonReturn {
+                    if cause.contains("GITHUB") {
+                        self?.netProbe()
+                    } else {
+                        let p = Process()
+                        p.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+                        p.arguments = ["https://vencord.dev/download/"]
+                        try? p.run()
+                    }
+                } else if r == .alertThirdButtonReturn {
+                    let p = Process()
+                    p.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+                    p.arguments = ["https://vencord.dev/download/"]
+                    try? p.run()
+                }
+            }
+        }
     }
 
     @objc private func netApply() {
@@ -433,6 +491,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             dnsItem.isEnabled = true
             if netProbeItem != nil { netProbeItem.isEnabled = true }
             if netApplyItem != nil { netApplyItem.isEnabled = true }
+            if discordDiagItem != nil { discordDiagItem.isEnabled = true }
             checkUpdateItem.isEnabled = true
             selfUpdateItem.isEnabled = true
             engineItem.isEnabled = true
@@ -450,6 +509,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         dnsItem.isEnabled = !busy
         if netProbeItem != nil { netProbeItem.isEnabled = !busy }
         if netApplyItem != nil { netApplyItem.isEnabled = !busy }
+        if discordDiagItem != nil { discordDiagItem.isEnabled = !busy }
         checkUpdateItem.isEnabled = !busy
         selfUpdateItem.isEnabled = !busy
         engineItem.isEnabled = !busy

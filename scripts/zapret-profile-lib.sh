@@ -152,6 +152,51 @@ curl_ok() {
 	esac
 }
 
+# Vencord on Discord.app needs GitHub API + site reachable (not just discord.com)
+github_ok() {
+	if curl_ok "https://api.github.com" || curl_ok "https://github.com"; then
+		return 0
+	fi
+	return 1
+}
+
+github_dns_poisoned() {
+	ip=""
+	if command -v dig >/dev/null 2>&1; then
+		ip=$(dig +short +time=2 +tries=1 api.github.com A 2>/dev/null | grep -E '^[0-9.]+$' | head -1)
+	fi
+	case "$ip" in
+		195.175.254.*|127.*|0.0.0.0) return 0 ;;
+		*) return 1 ;;
+	esac
+}
+
+# Ensure Support + /opt hostlists include GitHub/Vencord domains (merge, no wipe)
+ensure_github_hostlist_entries() {
+	_hl="$ZAPRET_OPT/ipset/zapret-hosts-user.txt"
+	_sup="$SUPPORT_DIR/config/zapret-hosts-user.txt"
+	_add='
+api.github.com
+raw.githubusercontent.com
+objects.githubusercontent.com
+release-assets.githubusercontent.com
+camo.githubusercontent.com
+vencord.dev
+vencord.cc
+github.com
+githubusercontent.com
+githubassets.com
+github.io
+'
+	for _f in "$_hl" "$_sup"; do
+		[ -f "$_f" ] || continue
+		printf '%s\n' "$_add" | while IFS= read -r d; do
+			[ -z "$d" ] && continue
+			grep -qxF "$d" "$_f" 2>/dev/null || echo "$d" >> "$_f"
+		done
+	done
+}
+
 apply_dns_public() {
 	for svc in "Wi-Fi" "Ethernet" "USB 10/100/1000 LAN" "Thunderbolt Ethernet"; do
 		networksetup -setdnsservers "$svc" 1.1.1.1 1.0.0.1 8.8.8.8 2>/dev/null || true

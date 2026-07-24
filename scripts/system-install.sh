@@ -218,7 +218,8 @@ for f in lib.sh zapret-ctl zapret-start.sh zapret-stop.sh zapret-status.sh \
 	zapret-tpws-run.sh zapret-boot.sh \
 	zapret-self-update.sh zapret-check-update.sh \
 	zapret-profile-lib.sh zapret-net-id.sh zapret-net-status.sh \
-	zapret-apply-profile.sh zapret-probe-network.sh zapret-netwatch.sh; do
+	zapret-apply-profile.sh zapret-probe-network.sh zapret-netwatch.sh \
+	zapret-discord-diag.sh; do
 	if [ -f "$SCRIPTS_DIR/$f" ]; then
 		cp "$SCRIPTS_DIR/$f" "$LOCAL_TOOLS/$f"
 	fi

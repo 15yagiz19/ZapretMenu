@@ -91,11 +91,21 @@ twitchcdn.net
 soundcloud.com
 sndcdn.com
 
-# GitHub (occasionally constrained)
+# GitHub — required for Vencord on Discord.app (updater/loader hits API + release CDN)
+# Without these, vanilla Discord may work while Vencord-patched app fails on some Wi-Fi.
 github.com
+api.github.com
 githubusercontent.com
+raw.githubusercontent.com
+objects.githubusercontent.com
+release-assets.githubusercontent.com
+camo.githubusercontent.com
 githubassets.com
 github.io
+
+# Vencord official sites (installer / docs — Discord.app patch stays on Discord.app)
+vencord.dev
+vencord.cc
 
 # Cloudflare pages / common CDNs used by blocked sites
 # (kept minimal — hostlist mode only fools matching hosts)

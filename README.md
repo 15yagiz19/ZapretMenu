@@ -130,6 +130,34 @@ sudo zapret-ctl net-probe
 sudo zapret-ctl net-apply
 ```
 
+
+## Discord.app + Vencord (ayrı client yok)
+
+**Vanilla Discord açılıyor, Vencord’lu app açılmıyorsa** (özellikle bazı Wi‑Fi’lerde):
+
+### Neden?
+- Vanilla: sadece `discord.com`
+- Vencord: Discord **+ GitHub** (`api.github.com`, release CDN)
+- Bazı ağlarda Discord OK, GitHub bozuk → Vencord splash/crash
+- Discord güncellemesi + eski patch → Installer **Repair** (yine aynı Discord.app)
+
+### Kalıcı Zapret tarafı (v1.2.1+)
+- Hostlist: `api.github.com`, GitHub release host’ları, `vencord.dev`
+- **Bu ağı yeniden ayarla**: GitHub health de test eder
+- Menü: **Discord/Vencord teşhis…**
+
+```bash
+sudo zapret-ctl discord-diag
+sudo zapret-ctl net-probe   # Zapret açıkken
+```
+
+### Patch (bir kez, aynı Discord.app)
+1. [vencord.dev/download](https://vencord.dev/download/) → macOS installer  
+2. Sağ tık → Aç  
+3. **Discord Stable** → **Repair / Update Vencord**  
+4. Vesktop veya başka client **gerekmez**
+
+
 ## Bozulursa ne yapmalı?
 
 1. Menüden **Kapat**  

@@ -6,7 +6,7 @@ set -e
 ROOT="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-VERSION="${VERSION:-1.2.0}"
+VERSION="${VERSION:-1.2.1}"
 ARCH_NOTE="universal (arm64+x86_64)"
 DIST_DIR="$ROOT/dist"
 STAGE="$DIST_DIR/stage"
@@ -50,6 +50,7 @@ for f in lib.sh zapret-ctl system-install.sh install-menubar.sh \
 	zapret-self-update.sh zapret-check-update.sh \
 	zapret-profile-lib.sh zapret-net-id.sh zapret-net-status.sh \
 	zapret-apply-profile.sh zapret-probe-network.sh zapret-netwatch.sh \
+	zapret-discord-diag.sh \
 	zapret-tpws.plist zapret-boot.plist zapret-netwatch.plist; do
 	cp "$ROOT/scripts/$f" "$PAYLOAD/scripts/$f"
 done
