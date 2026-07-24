@@ -6,7 +6,7 @@ set -e
 ROOT="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-VERSION="${VERSION:-1.1.0}"
+VERSION="${VERSION:-1.2.0}"
 ARCH_NOTE="universal (arm64+x86_64)"
 DIST_DIR="$ROOT/dist"
 STAGE="$DIST_DIR/stage"
@@ -48,7 +48,9 @@ for f in lib.sh zapret-ctl system-install.sh install-menubar.sh \
 	fix-dns-turkey.sh zapret-uninstall.sh verify.sh \
 	zapret-tpws-run.sh zapret-boot.sh \
 	zapret-self-update.sh zapret-check-update.sh \
-	zapret-tpws.plist zapret-boot.plist; do
+	zapret-profile-lib.sh zapret-net-id.sh zapret-net-status.sh \
+	zapret-apply-profile.sh zapret-probe-network.sh zapret-netwatch.sh \
+	zapret-tpws.plist zapret-boot.plist zapret-netwatch.plist; do
 	cp "$ROOT/scripts/$f" "$PAYLOAD/scripts/$f"
 done
 chmod 755 "$PAYLOAD/scripts"/*.sh "$PAYLOAD/scripts"/zapret-ctl 2>/dev/null || true
@@ -58,12 +60,17 @@ chmod 644 "$PAYLOAD/scripts"/*.plist 2>/dev/null || true
 printf '%s\n' "$VERSION" > "$PAYLOAD/VERSION"
 printf '%s\n' "$VERSION" > "$ROOT/VERSION" 2>/dev/null || true
 
-# Config
+# Config + strategies
 cp "$ROOT/config/config.macos-hostlist" "$PAYLOAD/config/"
 cp "$ROOT/config/zapret-hosts-user.txt" "$PAYLOAD/config/"
 if [ -d "$ROOT/config/custom.d" ]; then
 	mkdir -p "$PAYLOAD/config/custom.d"
 	cp -f "$ROOT/config/custom.d"/* "$PAYLOAD/config/custom.d/"
+fi
+if [ -d "$ROOT/config/strategies" ]; then
+	mkdir -p "$PAYLOAD/config/strategies" "$PAYLOAD/scripts/strategies"
+	cp -f "$ROOT/config/strategies/"*.tpws "$PAYLOAD/config/strategies/" 2>/dev/null || true
+	cp -f "$ROOT/config/strategies/"*.tpws "$PAYLOAD/scripts/strategies/" 2>/dev/null || true
 fi
 
 # Menubar app (prebuilt)

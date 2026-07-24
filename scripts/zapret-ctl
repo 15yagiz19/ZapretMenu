@@ -1,11 +1,5 @@
 #!/bin/sh
 # Whitelist-only control wrapper for menubar + CLI
-# Allowed: start|stop|restart|status|update-lists|update-engine|rollback-engine|
-#          fix-dns|check-update|self-update
-#
-# Portable: /usr/local/bin/zapret-ctl → /opt/zapret/local-tools;
-# when run from a checkout scripts/ dir, uses that dir.
-
 set -e
 
 SELF_DIR="$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
@@ -20,50 +14,30 @@ fi
 CMD="${1:-}"
 
 usage() {
-	echo "Kullanim: zapret-ctl {start|stop|restart|status|update-lists|update-engine|rollback-engine|fix-dns|check-update|self-update}" >&2
+	echo "Kullanim: zapret-ctl {start|stop|restart|status|update-lists|update-engine|rollback-engine|fix-dns|check-update|self-update|net-status|net-probe|net-apply}" >&2
 	exit 2
 }
 
 [ -n "$CMD" ] || usage
-
-# Reject any extra args / injection
 if [ "$#" -ne 1 ]; then
-	echo "HATA: sadece tek komut, arguman yok." >&2
+	echo "HATA: sadece tek komut" >&2
 	usage
 fi
 
 case "$CMD" in
-	start)
-		exec "$SCRIPTS_DIR/zapret-start.sh"
-		;;
-	stop)
-		exec "$SCRIPTS_DIR/zapret-stop.sh"
-		;;
-	restart)
-		"$SCRIPTS_DIR/zapret-stop.sh"
-		exec "$SCRIPTS_DIR/zapret-start.sh"
-		;;
-	status)
-		exec "$SCRIPTS_DIR/zapret-status.sh"
-		;;
-	update-lists)
-		exec "$SCRIPTS_DIR/zapret-update-lists.sh"
-		;;
-	update-engine)
-		exec "$SCRIPTS_DIR/zapret-update-engine.sh"
-		;;
-	rollback-engine)
-		exec "$SCRIPTS_DIR/zapret-rollback-engine.sh"
-		;;
-	fix-dns)
-		exec "$SCRIPTS_DIR/fix-dns-turkey.sh"
-		;;
-	check-update)
-		exec "$SCRIPTS_DIR/zapret-check-update.sh"
-		;;
-	self-update)
-		exec "$SCRIPTS_DIR/zapret-self-update.sh"
-		;;
+	start) exec "$SCRIPTS_DIR/zapret-start.sh" ;;
+	stop) exec "$SCRIPTS_DIR/zapret-stop.sh" ;;
+	restart) "$SCRIPTS_DIR/zapret-stop.sh"; exec "$SCRIPTS_DIR/zapret-start.sh" ;;
+	status) exec "$SCRIPTS_DIR/zapret-status.sh" ;;
+	update-lists) exec "$SCRIPTS_DIR/zapret-update-lists.sh" ;;
+	update-engine) exec "$SCRIPTS_DIR/zapret-update-engine.sh" ;;
+	rollback-engine) exec "$SCRIPTS_DIR/zapret-rollback-engine.sh" ;;
+	fix-dns) exec "$SCRIPTS_DIR/fix-dns-turkey.sh" ;;
+	check-update) exec "$SCRIPTS_DIR/zapret-check-update.sh" ;;
+	self-update) exec "$SCRIPTS_DIR/zapret-self-update.sh" ;;
+	net-status) exec "$SCRIPTS_DIR/zapret-net-status.sh" ;;
+	net-probe) exec "$SCRIPTS_DIR/zapret-probe-network.sh" ;;
+	net-apply) exec "$SCRIPTS_DIR/zapret-apply-profile.sh" ;;
 	*)
 		echo "HATA: bilinmeyen komut: $CMD" >&2
 		usage

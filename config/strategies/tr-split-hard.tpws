@@ -1,0 +1,2 @@
+--filter-tcp=80 --methodeol <HOSTLIST> --new
+--filter-tcp=443 --split-pos=2,sld+1 --disorder --tlsrec=1 <HOSTLIST>

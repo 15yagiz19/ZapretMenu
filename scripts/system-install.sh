@@ -100,9 +100,9 @@ if [ -f /etc/pf.conf ]; then
 	echo "PF yedek: /etc/pf.conf.bak.zapret.$TS"
 fi
 
-# 2) Clean stop + unload ALL zapret launchd jobs (KeepAlive + boot + legacy)
+# 2) Clean stop + unload ALL zapret launchd jobs (KeepAlive + boot + netwatch + legacy)
 echo "Eski servisler durduruluyor..."
-for lbl in system/zapret-tpws system/zapret-boot system/zapret system/zapret-watchdog; do
+for lbl in system/zapret-tpws system/zapret-boot system/zapret-netwatch system/zapret system/zapret-watchdog; do
 	launchctl bootout "$lbl" 2>/dev/null || true
 done
 if [ -x "$ZAPRET_OPT/init.d/macos/zapret" ]; then
@@ -216,18 +216,30 @@ for f in lib.sh zapret-ctl zapret-start.sh zapret-stop.sh zapret-status.sh \
 	zapret-update-lists.sh zapret-update-engine.sh zapret-rollback-engine.sh \
 	fix-dns-turkey.sh zapret-uninstall.sh verify.sh \
 	zapret-tpws-run.sh zapret-boot.sh \
-	zapret-self-update.sh zapret-check-update.sh; do
+	zapret-self-update.sh zapret-check-update.sh \
+	zapret-profile-lib.sh zapret-net-id.sh zapret-net-status.sh \
+	zapret-apply-profile.sh zapret-probe-network.sh zapret-netwatch.sh; do
 	if [ -f "$SCRIPTS_DIR/$f" ]; then
 		cp "$SCRIPTS_DIR/$f" "$LOCAL_TOOLS/$f"
 	fi
 done
-for f in zapret-tpws.plist zapret-boot.plist; do
+for f in zapret-tpws.plist zapret-boot.plist zapret-netwatch.plist; do
 	if [ -f "$SCRIPTS_DIR/$f" ]; then
 		cp "$SCRIPTS_DIR/$f" "$LOCAL_TOOLS/$f"
 	fi
 done
+# Strategy presets for per-network profiles
+if [ -d "$ZAPRET_HOME/config/strategies" ]; then
+	mkdir -p "$LOCAL_TOOLS/strategies"
+	cp -f "$ZAPRET_HOME/config/strategies/"*.tpws "$LOCAL_TOOLS/strategies/" 2>/dev/null || true
+elif [ -d "$SCRIPTS_DIR/../config/strategies" ]; then
+	mkdir -p "$LOCAL_TOOLS/strategies"
+	cp -f "$SCRIPTS_DIR/../config/strategies/"*.tpws "$LOCAL_TOOLS/strategies/" 2>/dev/null || true
+fi
 chmod 755 "$LOCAL_TOOLS"/*.sh "$LOCAL_TOOLS"/zapret-ctl 2>/dev/null || true
 chmod 644 "$LOCAL_TOOLS"/*.plist 2>/dev/null || true
+chmod 644 "$LOCAL_TOOLS/strategies/"* 2>/dev/null || true
+mkdir -p "$SUPPORT_DIR/profiles"
 
 # 6) Permissions
 chown -R root:wheel "$ZAPRET_OPT"
@@ -267,10 +279,17 @@ if [ -f "$LOCAL_TOOLS/zapret-boot.plist" ]; then
 	chown root:wheel /Library/LaunchDaemons/zapret-boot.plist
 	echo "launchd zapret-boot kuruldu."
 fi
+if [ -f "$LOCAL_TOOLS/zapret-netwatch.plist" ]; then
+	cp "$LOCAL_TOOLS/zapret-netwatch.plist" /Library/LaunchDaemons/zapret-netwatch.plist
+	chmod 644 /Library/LaunchDaemons/zapret-netwatch.plist
+	chown root:wheel /Library/LaunchDaemons/zapret-netwatch.plist
+	echo "launchd zapret-netwatch kuruldu (15sn ag izleme)."
+fi
 
 # desired-state default on
 printf 'on\n' > "$SUPPORT_DIR/desired-state"
 chmod 644 "$SUPPORT_DIR/desired-state"
+mkdir -p "$SUPPORT_DIR/profiles"
 
 # 8) zapret-ctl + sudoers (target user, not hardcoded)
 # IMPORTANT: ctl must live under /opt/zapret/local-tools (no home path)
@@ -339,6 +358,12 @@ if [ -f /Library/LaunchDaemons/zapret-boot.plist ]; then
 	launchctl bootstrap system /Library/LaunchDaemons/zapret-boot.plist 2>/dev/null || \
 	launchctl load -w /Library/LaunchDaemons/zapret-boot.plist 2>/dev/null || true
 fi
+if [ -f /Library/LaunchDaemons/zapret-netwatch.plist ]; then
+	launchctl bootout system/zapret-netwatch 2>/dev/null || true
+	launchctl bootstrap system /Library/LaunchDaemons/zapret-netwatch.plist 2>/dev/null || \
+	launchctl load -w /Library/LaunchDaemons/zapret-netwatch.plist 2>/dev/null || true
+	echo "netwatch yuklendi (Wi-Fi degisince otomatik profil)."
+fi
 
 sleep 2
 if pgrep -xq tpws; then
@@ -346,6 +371,12 @@ if pgrep -xq tpws; then
 else
 	echo "UYARI: tpws henuz gorunmuyor — status / logs kontrol edin."
 	echo "  $SUPPORT_DIR/logs/tpws-stderr.log"
+fi
+
+# Initial network profile probe (best effort, non-fatal)
+if [ -x "$LOCAL_TOOLS/zapret-probe-network.sh" ]; then
+	echo "Ag profili hazirlaniyor (probe)..."
+	"$LOCAL_TOOLS/zapret-probe-network.sh" 2>/dev/null || true
 fi
 
 # 11) DNS fix for Turkey (Discord poison via router DNS)

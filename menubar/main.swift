@@ -21,6 +21,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var refreshItem: NSMenuItem!
     private var listsItem: NSMenuItem!
     private var dnsItem: NSMenuItem!
+    private var netStatusItem: NSMenuItem!
+    private var netProbeItem: NSMenuItem!
+    private var netApplyItem: NSMenuItem!
     private var checkUpdateItem: NSMenuItem!
     private var selfUpdateItem: NSMenuItem!
     private var engineItem: NSMenuItem!
@@ -61,9 +64,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         listsItem.target = self
         menu.addItem(listsItem)
 
-        dnsItem = NSMenuItem(title: "DNS düzelt (Wi‑Fi)", action: #selector(fixDns), keyEquivalent: "")
+        dnsItem = NSMenuItem(title: "DNS düzelt (bu ağ)", action: #selector(fixDns), keyEquivalent: "")
         dnsItem.target = self
         menu.addItem(dnsItem)
+
+        menu.addItem(NSMenuItem.separator())
+
+        netStatusItem = NSMenuItem(title: "Ağ: …", action: nil, keyEquivalent: "")
+        netStatusItem.isEnabled = false
+        menu.addItem(netStatusItem)
+
+        netProbeItem = NSMenuItem(title: "Bu ağı yeniden ayarla", action: #selector(netProbe), keyEquivalent: "")
+        netProbeItem.target = self
+        menu.addItem(netProbeItem)
+
+        netApplyItem = NSMenuItem(title: "Bu ağ profilini uygula", action: #selector(netApply), keyEquivalent: "")
+        netApplyItem.target = self
+        menu.addItem(netApplyItem)
 
         menu.addItem(NSMenuItem.separator())
 
@@ -119,6 +136,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func updateLists() {
         runCtl("update-lists", busyTitle: "Listeler güncelleniyor…")
+    }
+
+
+    @objc private func netProbe() {
+        let alert = NSAlert()
+        alert.messageText = "Bu ağı yeniden ayarla?"
+        alert.informativeText = """
+        Mevcut Wi‑Fi için DNS zehiri ve DPI stratejisi test edilir (~30 sn).
+        Sonuç bu ağa kaydedilir; sonraki bağlantılarda otomatik uygulanır.
+        """
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "Başla")
+        alert.addButton(withTitle: "İptal")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        runCtl("net-probe", busyTitle: "Ağ ayarlanıyor…", longRunning: true)
+    }
+
+    @objc private func netApply() {
+        runCtl("net-apply", busyTitle: "Profil uygulanıyor…", longRunning: true)
     }
 
     @objc private func fixDns() {
@@ -328,7 +364,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func refreshStatus() {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let result = self?.runProcess(args: ["status"], useSudo: true) ?? (1, "ctl yok")
+            let net = self?.runProcess(args: ["net-status"], useSudo: true) ?? (1, "")
             let out = result.1
+            let netOut = net.1
+            DispatchQueue.main.async {
+                self?.updateNetMenu(netOut)
+            }
             let on: Bool
             if out.contains("Zapret: Acik") || out.contains("Zapret: Açık") {
                 on = true
@@ -341,6 +382,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.async {
                 self?.applyStatus(on: on, desiredOn: desiredOn, detail: out)
             }
+        }
+    }
+
+
+    private func updateNetMenu(_ out: String) {
+        guard netStatusItem != nil else { return }
+        var display = "Ağ"
+        var strategy = ""
+        for line in out.split(separator: "\n").map(String.init) {
+            if line.hasPrefix("display=") { display = String(line.dropFirst(8)) }
+            if line.hasPrefix("ssid="), display == "Ağ" || display.isEmpty {
+                let s = String(line.dropFirst(5))
+                if !s.isEmpty { display = s }
+            }
+            if line.hasPrefix("strategy=") { strategy = String(line.dropFirst(9)) }
+            if line.hasPrefix("profile=no") { strategy = "kayıt yok" }
+        }
+        if strategy.isEmpty {
+            netStatusItem.title = "Ağ: \(display)"
+        } else {
+            netStatusItem.title = "Ağ: \(display) · \(strategy)"
         }
     }
 
@@ -369,6 +431,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !isBusy {
             listsItem.isEnabled = true
             dnsItem.isEnabled = true
+            if netProbeItem != nil { netProbeItem.isEnabled = true }
+            if netApplyItem != nil { netApplyItem.isEnabled = true }
             checkUpdateItem.isEnabled = true
             selfUpdateItem.isEnabled = true
             engineItem.isEnabled = true
@@ -384,6 +448,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         closeItem.isEnabled = !busy
         listsItem.isEnabled = !busy
         dnsItem.isEnabled = !busy
+        if netProbeItem != nil { netProbeItem.isEnabled = !busy }
+        if netApplyItem != nil { netApplyItem.isEnabled = !busy }
         checkUpdateItem.isEnabled = !busy
         selfUpdateItem.isEnabled = !busy
         engineItem.isEnabled = !busy

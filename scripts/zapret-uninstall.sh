@@ -23,10 +23,10 @@ if [ -x "$ZAPRET_OPT/uninstall_easy.sh" ]; then
 fi
 
 # launchd (KeepAlive + boot + legacy)
-for lbl in system/zapret-tpws system/zapret-boot system/zapret system/zapret-watchdog; do
+for lbl in system/zapret-tpws system/zapret-boot system/zapret-netwatch system/zapret system/zapret-watchdog; do
 	launchctl bootout "$lbl" 2>/dev/null || true
 done
-for pl in zapret-tpws.plist zapret-boot.plist zapret.plist zapret-watchdog.plist; do
+for pl in zapret-tpws.plist zapret-boot.plist zapret-netwatch.plist zapret.plist zapret-watchdog.plist; do
 	launchctl unload "/Library/LaunchDaemons/$pl" 2>/dev/null || true
 	rm -f "/Library/LaunchDaemons/$pl"
 done

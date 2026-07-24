@@ -110,6 +110,26 @@ sleep 3
 sudo zapret-ctl status   # yine Acik olmali
 ```
 
+
+## Ağ / Wi‑Fi profilleri (v1.2.0)
+
+Farklı Wi‑Fi ağlarında DNS ve bypass stratejisi otomatik ayarlanır.
+
+| Menü | İş |
+|------|-----|
+| **Ağ: …** | Bağlı ağ + kayıtlı strateji |
+| **Bu ağı yeniden ayarla** | Probe (~30 sn) + profil kaydet |
+| **Bu ağ profilini uygula** | Kayıtlı profili şimdi uygula |
+| **DNS düzelt (bu ağ)** | Public DNS + profile yaz |
+
+Arka planda `zapret-netwatch` ~15 sn’de bir ağ değişimini izler. Zapret **Kapalı** iken müdahale etmez.
+
+```bash
+sudo zapret-ctl net-status
+sudo zapret-ctl net-probe
+sudo zapret-ctl net-apply
+```
+
 ## Bozulursa ne yapmalı?
 
 1. Menüden **Kapat**  

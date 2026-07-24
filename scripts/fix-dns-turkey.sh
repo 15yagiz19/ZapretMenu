@@ -1,7 +1,5 @@
 #!/bin/sh
-# Set Wi-Fi DNS to public resolvers (Turkey Discord DNS poison fix).
-# No python3 / no Xcode CLT required.
-
+# Set Wi-Fi DNS to public resolvers and save into current network profile.
 set +e
 
 DNS1=1.1.1.1
@@ -34,44 +32,43 @@ fi
 
 if [ "$FIXED" -eq 0 ]; then
 	echo "UYARI: DNS yazilamadi."
-	echo "Sistem Ayarlari > Wi-Fi > Ayrintilar > DNS:"
-	echo "  $DNS1"
-	echo "  $DNS2"
-	echo "  $DNS3"
 fi
 
 dscacheutil -flushcache 2>/dev/null || true
 killall -HUP mDNSResponder 2>/dev/null || true
 
+# Save into current network profile (best effort)
+if [ -f "$(dirname "$0")/zapret-profile-lib.sh" ]; then
+	# shellcheck disable=SC1091
+	. "$(dirname "$0")/zapret-profile-lib.sh"
+	load_net_id
+	if [ -n "$NET_ID" ]; then
+		ppath=$(profile_path "$NET_ID")
+		strat=tr-default
+		quic=true
+		if [ -f "$ppath" ]; then
+			s=$(read_profile_field "$ppath" strategy)
+			q=$(read_profile_field "$ppath" quic_block)
+			[ -n "$s" ] && strat=$s
+			[ -n "$q" ] && quic=$q
+		fi
+		write_profile "$NET_ID" "$NET_SSID" "$NET_GATEWAY" "$NET_IFACE" "$strat" "public" "$quic" "manual DNS fix"
+		echo "Profil guncellendi: $NET_DISPLAY ($NET_ID) dns=public"
+	fi
+fi
+
 echo ""
-echo "Kontrol (python YOK — dig/host kullanilir):"
+echo "Kontrol:"
 sleep 1
 IP=""
 if command -v dig >/dev/null 2>&1; then
 	IP=$(dig +short discord.com A 2>/dev/null | grep -E '^[0-9.]+$' | head -1)
 fi
-if [ -z "$IP" ] && command -v host >/dev/null 2>&1; then
-	IP=$(host discord.com 2>/dev/null | awk '/has address/{print $4; exit}')
-fi
-if [ -z "$IP" ] && command -v nslookup >/dev/null 2>&1; then
-	IP=$(nslookup discord.com 2>/dev/null | awk '/^Address: /{print $2}' | tail -1)
-fi
 echo "  discord.com -> ${IP:-?}"
 case "$IP" in
-	195.175.254.*)
-		echo "  KOTU: zehirli DNS. Router hâlâ DNS veriyor olabilir."
-		echo "  Wi-Fi DNS'i elle 1.1.1.1 yapin; 'Otomatik' KAPALI olsun."
-		;;
-	162.159.*)
-		echo "  IYI: Cloudflare Discord IP."
-		;;
-	"")
-		echo "  IP okunamadi — yine de DNS ayari yazildiysa Discord'u yeniden acin."
-		;;
-	*)
-		echo "  195.175.254.2 = kotu. 162.159.x.x = iyi."
-		;;
+	195.175.254.*) echo "  KOTU: zehirli DNS" ;;
+	162.159.*) echo "  IYI: Cloudflare" ;;
+	*) echo "  Not: 195.175.254.2 = kotu" ;;
 esac
-echo ""
-echo "Simdi: Discord app'i Cmd+Q ile kapatip acin. WARP kapali olsun."
+echo "  Discord app + tarayiciyi kapatip acin."
 exit 0
